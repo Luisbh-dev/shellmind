@@ -1,0 +1,10 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "module": "commonjs",
+    "target": "es2019",
+    "jsx": "react",
+    "noImplicitAny": false
+  },
+  "include": ["server.ts", "database.ts", "types.d.ts"]
+}
