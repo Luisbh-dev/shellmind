@@ -1,13 +1,13 @@
-import { useState, useEffect, useRef } from "react";
-import Sidebar from "@/components/Sidebar";
-import TerminalComponent from "@/components/Terminal";
-import RdpComponent from "@/components/Rdp";
-import FileExplorer from "@/components/FileExplorer";
-import Chat from "@/components/Chat";
-import AddServerModal from "@/components/AddServerModal";
-import SettingsModal from "@/components/SettingsModal";
-import { Terminal as TerminalIcon, Monitor, Activity, FileText, MessageSquare } from "lucide-react";
-import { clsx } from "clsx";
+import { useState, useEffect, useRef } from 'react';
+import Sidebar from '@/components/Sidebar';
+import TerminalComponent from '@/components/Terminal';
+import RdpComponent from '@/components/Rdp';
+import FileExplorer from '@/components/FileExplorer';
+import Chat from '@/components/Chat';
+import AddServerModal from '@/components/AddServerModal';
+import SettingsModal from '@/components/SettingsModal';
+import { Terminal as TerminalIcon, Monitor, Activity, FileText, MessageSquare } from 'lucide-react';
+import { clsx } from 'clsx';
 
 function App() {
   const [activeServer, setActiveServer] = useState<any>(null);
@@ -19,7 +19,7 @@ function App() {
   const [isChatOpen, setIsChatOpen] = useState(true);
   
   // Terminal History Buffer (Ref to avoid re-renders)
-  const terminalHistoryRef = useRef("");
+  const terminalHistoryRef = useRef('');
 
   const handleTerminalOutput = (data: string) => {
       terminalHistoryRef.current += data;
@@ -37,7 +37,7 @@ function App() {
               setServers(data.data);
           }
       } catch (e) {
-          console.error("Failed to fetch servers", e);
+          console.error('Failed to fetch servers', e);
       }
   };
 
@@ -47,7 +47,7 @@ function App() {
 
   const handleSelectServer = (server: any) => {
       setActiveServer(server);
-      terminalHistoryRef.current = "";
+      terminalHistoryRef.current = '';
       setActiveTab('ssh');
   };
 
@@ -74,6 +74,9 @@ function App() {
 
   const isWindows = activeServer?.type === 'windows';
   
+  // Detect Electron
+  const isElectron = navigator.userAgent.toLowerCase().includes(' electron/');
+
   const statusCommand = isWindows 
       ? "powershell -Command \"while ($true) { $s = '--- SYSTEM STATUS ---' + [Environment]::NewLine; $os = Get-CimInstance Win32_OperatingSystem; $cpu = Get-CimInstance Win32_Processor; $mem = [math]::Round($os.FreePhysicalMemory / 1024, 2); $tot = [math]::Round($os.TotalVisibleMemorySize / 1024, 2); $s += 'OS: ' + $os.Caption + [Environment]::NewLine; $s += 'Uptime: ' + ((Get-Date) - $os.LastBootUpTime).ToString('dd\\.hh\\:mm\\:ss') + [Environment]::NewLine; $s += 'CPU: ' + $cpu.LoadPercentage + '%' + [Environment]::NewLine; $s += 'Memory: ' + $mem + 'MB Free / ' + $tot + 'MB Total' + [Environment]::NewLine + [Environment]::NewLine; $s += '--- DISK USAGE ---' + [Environment]::NewLine; $s += (Get-PSDrive -PSProvider FileSystem | Select-Object Name, @{N='Used(GB)';E={[math]::Round($_.Used/1GB,2)}}, @{N='Free(GB)';E={[math]::Round($_.Free/1GB,2)}} | Format-Table -AutoSize | Out-String); $s += '--- TOP PROCESSES ---' + [Environment]::NewLine; $s += (Get-Process | Sort-Object CPU -Descending | Select-Object -First 10 Name, CPU, Id, WorkingSet | Format-Table -AutoSize | Out-String); Clear-Host; Write-Host $s; Start-Sleep -Seconds 2 }\""
       : "if command -v htop &> /dev/null; then htop; else top; fi";
@@ -98,20 +101,26 @@ function App() {
       {/* Column 2: Workspace (Terminal/RDP) */}
       <main className="flex flex-col min-w-0 bg-black relative h-full overflow-hidden min-h-0">
         {/* Workspace Header */}
-        <header className="h-10 border-b border-zinc-800 flex items-center justify-between px-4 bg-zinc-900/30 shrink-0">
-            <div className="flex items-center gap-4">
+        <header 
+            className={clsx(
+                "h-10 border-b border-zinc-800 flex items-center justify-between px-4 bg-zinc-900/30 shrink-0",
+                isElectron && !isChatOpen && "pr-36" // Add padding only if Chat is closed
+            )}
+            style={{ WebkitAppRegion: isElectron ? 'drag' : undefined } as any}
+        >
+            <div className="flex items-center gap-4 min-w-0 flex-1" style={{ WebkitAppRegion: 'no-drag' } as any}>
                  {activeServer ? (
-                    <div className="flex items-center gap-2 text-sm">
-                        <span className={clsx("w-2 h-2 rounded-full shadow-sm", "bg-emerald-500 shadow-emerald-500/50")}></span>
-                        <span className="font-medium text-zinc-100">{activeServer.name}</span>
-                        <span className="text-zinc-600 font-mono text-xs">({activeServer.ip})</span>
+                    <div className="flex items-center gap-2 text-sm min-w-0 overflow-hidden">
+                        <span className={clsx("w-2 h-2 rounded-full shadow-sm shrink-0", "bg-emerald-500 shadow-emerald-500/50")}></span>
+                        <span className="font-medium text-zinc-100 truncate max-w-[150px] md:max-w-xs">{activeServer.name}</span>
+                        <span className="text-zinc-600 font-mono text-xs truncate shrink-0">({activeServer.ip})</span>
                     </div>
                  ) : (
                     <span className="text-zinc-500 text-sm italic">No connection selected</span>
                  )}
             </div>
             
-            <div className="flex h-full items-center gap-4">
+            <div className="flex h-full items-center gap-4 shrink-0" style={{ WebkitAppRegion: 'no-drag' } as any}>
                 {/* Tab Switcher - Only visible when active */}
                 {activeServer && (
                     <div className="flex h-full mr-2">

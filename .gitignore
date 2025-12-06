@@ -1,5 +1,42 @@
+# Dependencies
 node_modules
-dist
-.env
-.DS_Store
+.pnp
+.pnp.js
+
+# Testing
 coverage
+
+# Production / Build Folders (Web & Electron)
+dist
+dist-electron
+dist-server
+release
+release*
+
+# Environment Variables
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Database (Keep your data private)
+shellmind.db
+shellmind.db-journal
+*.sqlite
+*.db
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+*.log
+logs
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# OS Files
+.DS_Store
+Thumbs.db

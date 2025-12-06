@@ -1,7 +1,21 @@
 import sqlite3 from 'sqlite3';
 import path from 'path';
+import fs from 'fs';
 
-const dbPath = path.resolve(__dirname, 'shellmind.db');
+const dbPath = process.env.DB_PATH || path.resolve(__dirname, 'shellmind.db');
+
+// Ensure directory exists
+const dbDir = path.dirname(dbPath);
+if (!fs.existsSync(dbDir)) {
+    try {
+        fs.mkdirSync(dbDir, { recursive: true });
+        console.log('Created database directory:', dbDir);
+    } catch (e) {
+        console.error('Failed to create database directory:', e);
+    }
+}
+
+console.log('Opening database at:', dbPath);
 
 const db = new sqlite3.Database(dbPath, (err) => {
   if (err) {

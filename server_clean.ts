@@ -268,77 +268,8 @@ io.on("connection", (socket) => {
   let sshStream: any = null;
   let sftp: any = null;
   let conn: Client | null = null;
-  let rdpClient: any = null;
   let termRows = 24;
   let termCols = 80;
-
-  // --- RDP Handling ---
-  socket.on("start-rdp", (config) => {
-      console.log(`Starting RDP connection to ${config.host}`);
-      
-      try {
-          rdpClient = rdp.createClient({
-            domain: config.domain || '.',
-            userName: config.username || 'Administrator',
-            password: config.password || '',
-            enablePerf: false,
-            autoLogin: true,
-            screen: { width: 800, height: 600 }, // Back to small/standard to minimize data
-            locale: 'en',
-            logLevel: 'DEBUG', // Verbose logs
-            vmConnectId: '',
-          }).on('connect', () => {
-              console.log('RDP Connected');
-              socket.emit('rdp-connect');
-              // Hack: Send a shift key press to wake up the screen
-              setTimeout(() => {
-                  if (rdpClient) rdpClient.sendKeyEvent(16, true); // Shift down
-                  if (rdpClient) rdpClient.sendKeyEvent(16, false); // Shift up
-              }, 1000);
-          }).on('bitmap', (bitmap: any) => {
-              // Debug: Check if we are getting data
-              if (bitmap.data && bitmap.data.length > 0) {
-                  socket.emit('rdp-bitmap', { 
-                      x: bitmap.destLeft, 
-                      y: bitmap.destTop, 
-                      width: bitmap.width, 
-                      height: bitmap.height, 
-                      data: bitmap.data.toString('base64') 
-                  });
-              }
-          }).on('close', () => {
-              console.log('RDP Closed');
-              socket.emit('rdp-close');
-          }).on('error', (err: any) => {
-              console.error('RDP Error:', err);
-              let errorMsg = err.message;
-              if (errorMsg && errorMsg.includes("code:5")) {
-                  errorMsg = "Connection blocked by NLA. Please disable 'Network Level Authentication' on the target Windows server to use this web client.";
-              }
-              socket.emit('rdp-error', errorMsg);
-          });
-
-          // Connect with a timeout/retry logic usually, but here direct:
-          rdpClient.connect(config.host, 3389);
-
-      } catch (err: any) {
-          console.error("Failed to initialize RDP client:", err);
-          socket.emit('rdp-error', "RDP Client Initialization Failed: " + err.message);
-      }
-  });
-
-  socket.on("rdp-mouse", (data) => {
-      if (rdpClient) {
-          rdpClient.sendPointerEvent(data.x, data.y, data.button, data.isPressed);
-      }
-  });
-  
-  socket.on("rdp-key", (data) => {
-      if (rdpClient) {
-          rdpClient.sendKeyEvent(data.code, data.isPressed);
-      }
-  });
-
 
   // --- SSH Handling ---
   socket.on("start-ssh", (config) => {

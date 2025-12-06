@@ -3,9 +3,11 @@
   "compilerOptions": {
     "module": "commonjs",
     "target": "es2019",
+    "outDir": "dist-electron",
     "esModuleInterop": true,
     "skipLibCheck": true,
-    "noEmit": true
+    "moduleResolution": "node",
+    "noEmit": false
   },
-  "include": ["server_clean.ts", "database.ts"]
+  "include": ["electron/**/*.ts"]
 }

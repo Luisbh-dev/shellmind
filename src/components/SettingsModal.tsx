@@ -12,6 +12,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const [status, setStatus] = useState<{ configured: boolean, source: 'env' | 'db' | 'none' } | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [connError, setConnError] = useState<string | null>(null);
 
   useEffect(() => {
       if (isOpen) {
@@ -21,12 +22,14 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
 
   const fetchStatus = async () => {
       setIsLoading(true);
+      setConnError(null);
       try {
           const res = await fetch('http://localhost:3001/api/config/status');
           const data = await res.json();
           setStatus(data);
       } catch (e) {
           console.error(e);
+          setConnError("Backend Server Disconnected");
       } finally {
           setIsLoading(false);
       }
@@ -110,7 +113,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
             </div>
 
             {/* Input Section */}
-            {status && status.source !== 'env' && (
+            {status?.source !== 'env' && (
                 <form onSubmit={handleSave} className="space-y-4">
                     <div>
                         <label className="block text-[10px] uppercase text-zinc-500 font-bold mb-1">Set New API Key</label>

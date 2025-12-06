@@ -259,15 +259,23 @@ export default function Chat({ activeServer, terminalHistory }: ChatProps) {
     }
   };
 
+  const isElectron = navigator.userAgent.toLowerCase().includes(' electron/');
+
   return (
     <div className="flex flex-col h-full text-zinc-300 bg-zinc-900/30 relative">
       {/* Header */}
-      <div className="h-10 px-4 border-b border-zinc-800 flex items-center justify-between bg-zinc-900/50 shrink-0">
-        <div className="flex items-center gap-2">
+      <div 
+        className="h-10 px-4 border-b border-zinc-800 flex items-center justify-between bg-zinc-900/50 shrink-0"
+        style={{ 
+            WebkitAppRegion: isElectron ? 'drag' : undefined,
+            paddingRight: isElectron ? '160px' : undefined 
+        } as any}
+      >
+        <div className="flex items-center gap-2" style={{ WebkitAppRegion: 'no-drag' } as any}>
             <Sparkles className="w-3.5 h-3.5 text-teal-500" />
             <span className="font-bold text-xs text-zinc-300 uppercase tracking-wider">AI Assistant</span>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2" style={{ WebkitAppRegion: 'no-drag' } as any}>
             <button 
                 onClick={toggleAutoRun}
                 className={clsx(
