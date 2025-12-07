@@ -1,6 +1,6 @@
 # 🐚 ShellMind
 
-> **Version 0.1.0 Alpha**
+> **Version 0.1.1 Multi-Model Hotfix**
 
 **Your AI-Powered System Administration Companion.**
 
@@ -10,6 +10,13 @@ ShellMind is a robust, self-hosted server management dashboard that integrates *
 
 ## ✨ Key Features
 
+### 🧠 Multi-Model AI Core (New in v0.1.1)
+-   **Dynamic Model Switching**: Choose between **Flash 2.5 (Smart)** and **Gemma 3 (Standard)** directly from the Chat UI.
+-   **Smart Fallback**: If one model hits its rate limit, ShellMind automatically switches to the other to keep your workflow uninterrupted.
+-   **Context-Aware**: The AI reads your terminal output. If a command fails, it analyzes the error and suggests fixes immediately.
+-   **Auto-Run Agent**: Enable "Auto-Run" mode to let the AI execute commands, analyze the output, and self-correct until the task is done (requires user confirmation).
+-   **Language Persistence**: The AI detects your language (e.g., Spanish) and maintains the conversation in that language, even when analyzing technical English outputs.
+
 ### 🖥️ Multi-Protocol Connectivity
 -   **Smart Terminal**: Full-featured web terminal with WebGL acceleration. Supports **SSH** for Linux and **PowerShell** (via OpenSSH) for Windows.
 -   **Windows Support**: Complete Windows Server management including:
@@ -17,11 +24,6 @@ ShellMind is a robust, self-hosted server management dashboard that integrates *
     -   **RDP**: Integrated Remote Desktop Protocol client in the browser (**Work in Progress**).
     -   **SFTP**: File management for Windows via OpenSSH.
 -   **SFTP Explorer**: Integrated file manager to browse, upload, download, and delete files (supports both Linux & Windows).
-
-### 🧠 Agentic IA SysAdmin
--   **Context-Aware**: The AI reads your terminal output. If a command fails, it analyzes the error and suggests fixes immediately.
--   **Auto-Run Agent**: Enable "Auto-Run" mode to let the AI execute commands, analyze the output, and self-correct until the task is done (requires user confirmation).
--   **Language Persistence**: The AI detects your language (e.g., Spanish) and maintains the conversation in that language, even when analyzing technical English outputs.
 
 ### 📈 Real-Time Monitoring
 -   **System Dashboard**: Dedicated 'Status' tab.
@@ -40,7 +42,7 @@ ShellMind is a robust, self-hosted server management dashboard that integrates *
 
 ### 🔑 How to get a Free Gemini API Key
 
-ShellMind is powered by Google's Gemini 2.5 Flash model, which offers a generous free tier perfect for personal use.
+ShellMind is powered by Google's Generative AI models, which offer a generous free tier perfect for personal use.
 
 1.  Go to **[Google AI Studio](https://aistudio.google.com/app/apikey)**.
 2.  Log in with your Google account.
@@ -64,16 +66,15 @@ ShellMind is powered by Google's Gemini 2.5 Flash model, which offers a generous
     Create a `.env` file in the root directory:
     ```env
     GEMINI_API_KEY=your_api_key_here
-    GEMINI_MODEL_NAME=gemini-2.5-flash
     ```
     *Note: You can also configure the API Key via the UI Settings if not provided in the environment.*
 
 4.  **Run the App**:
     Start the development server:
     ```bash
-    npm run dev
-    npm run server
+    npm start
     ```
+    *(Or run `npm run dev` and `npm run server` separately if needed)*
 
 5.  **Access**:
     Open `http://localhost:5173` in your browser.

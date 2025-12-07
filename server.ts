@@ -24,8 +24,6 @@ app.use(express.json());
 
 const PORT = 3001; // Backend port
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
-// Use the specific model requested
-const MODEL_NAME = process.env.GEMINI_MODEL_NAME || "gemini-2.5-flash"; 
 
 // --- API Routes ---
 
@@ -164,7 +162,7 @@ app.post("/api/config/apikey", (req, res) => {
 // Chat API Route
 app.post("/api/chat", async (req: any, res: any) => {
   try {
-    const { message, context } = req.body;
+    const { message, context, model: requestedModel } = req.body;
 
     let apiKey = process.env.GEMINI_API_KEY;
     
@@ -185,17 +183,20 @@ app.post("/api/chat", async (req: any, res: any) => {
       return res.json({ response: "Please set your GEMINI_API_KEY in Settings or Environment variables." });
     }
 
+    // Determine Model
+    let targetModel = requestedModel;
+    if (!targetModel) {
+         // Check DB if not provided in request
+         const row: any = await new Promise((resolve) => {
+            db.get("SELECT value FROM settings WHERE key = 'PREFERRED_MODEL'", [], (err, row) => resolve(row));
+         });
+         // Default to Flash if nothing configured 
+         targetModel = (row && row.value) ? row.value : "gemini-2.5-flash";
+    }
+
+    console.log(`[Chat] Using Gemini Model: ${targetModel}`);
+
     const genAI = new GoogleGenerativeAI(apiKey);
-    // Note: Ensure 'gemini-2.5-flash' is available in your region/API tier, otherwise fallback might be needed
-    const model = genAI.getGenerativeModel({ 
-        model: MODEL_NAME,
-        safetySettings: [
-            { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE },
-            { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE },
-            { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_NONE },
-            { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE },
-        ]
-    });
 
     const SYSTEM_PROMPT = `You are ShellMind AI, an expert Linux/Windows System Administrator assistant. 
     Your goal is to help manage servers, write scripts, debug errors, and explain commands.
@@ -206,7 +207,7 @@ app.post("/api/chat", async (req: any, res: any) => {
        - **ALWAYS respond in the SAME language as the user's query.**
        - If the user speaks Spanish, answer in Spanish.
        - **SPECIAL RULE**: If the user query starts with "[AUTOMATED SYSTEM OUTPUT]", this is a technical system report. DO NOT switch to English. **You must analyze this technical output but respond to the user in their ORIGINAL language** (the one used in previous messages).
-
+    
     2. **NON-INTERACTIVE MODE**: Always assume commands are run in a script/automation context.
        - Use \`-y\` for apt/yum/dnf.
        - Use \`DEBIAN_FRONTEND=noninteractive\` for complex installs.
@@ -215,20 +216,39 @@ app.post("/api/chat", async (req: any, res: any) => {
     
     3. **ERROR ANALYSIS**:
        - You will receive the "[LAST 50 LINES OF TERMINAL OUTPUT]" in the context.
-       - ANALYZE this output first. If there is an error, fix THAT specific error.
+       - **WARNING**: This is a PARTIAL snapshot. The command might still be running.
+       - **DO NOT** assume error just because the output stops abruptly or looks incomplete.
+       - **ONLY** report errors if you see explicit error messages (e.g., "command not found", "failed", "error:").
+       - If the output looks like a normal progress bar or partial log, assume it is working.
+       - ANALYZE this output first. If there is an explicit error, fix THAT specific error.
        - Do not repeat commands that just failed without changing something.
     
-    4. **WINDOWS SHELL COMPATIBILITY**:
-       - When the target OS is Windows, assume the default SSH shell might be \`cmd.exe\`.
-       - If you generate PowerShell code (cmdlets, objects), **YOU MUST WRAP IT** in \`powershell -Command "..."\` to ensure execution.
-       - Example: \`powershell -Command "Get-Service | Where-Object Status -eq Running"\`
+    4. **WINDOWS SHELL COMPATIBILITY (CRITICAL)**:
+       - **THE ENVIRONMENT IS RAW CMD.EXE**.
+       - **AVOID POWERSHELL for simple file operations** (it is too verbose).
+       - **FOR SIMPLE TASKS (cd, dir, mkdir, del, echo)**: YOU MUST USE STANDARD DOS COMMANDS.
+         - Correct: \`mkdir "C:\\prueba"\`
+         - Correct: \`echo hello > "C:\\file.txt"\`
+         - Incorrect: \`New-Item ...\`
+       - **FOR POWERSHELL TASKS (Services, Registry)**: You MUST type \`powershell\` explicitly.
+         - Correct: \`powershell -Command "Get-Service"\`
+         - Incorrect: \`-Command "Get-Service"\`
     
     5. **ROBUSTNESS**:
        - Chain commands with \`&&\` where appropriate, but keep blocks logical.
        - Check if processes exist before killing them (\`pgrep\`, \`pidof\`).
        - Verify success (e.g., \`docker ps\` after running a container).
-
+    
+    6. **APPLICATION DEPLOYMENT (CRITICAL)**:
+       - **PREFER DOCKER** for modern web applications (Portainer, Nginx Proxy Manager, Databases) if Docker is present.
+       - **DO NOT** invent \`apt\` packages for software that is typically distributed via Docker.
+       - **EXAMPLE**: Portainer is installed via \`docker run\`, NOT \`apt install portainer\`.
+       - **EXAMPLE**: If Docker is installed, use it to run containers instead of polluting the host OS.
+    
     - Keep answers concise and technical.
+    - **BE DIRECT**: Stop explaining obvious things like "The command executed successfully".
+    - **OUTPUT ANALYSIS**: If a tool is already installed, just say "Docker is already installed." and move on.
+    - Avoid phrases like "The output indicates that...", "It appears that...". Be assertive.
     - Assume the user is a professional admin.
     - Use markdown for code blocks.
     - Be aware of the current server context provided below.
@@ -241,20 +261,65 @@ app.post("/api/chat", async (req: any, res: any) => {
        \`\`\`bash
        sudo apt update && sudo apt upgrade -y
        \`\`\`
-    4. Example of INCORRECT output (DO NOT DO THIS):
-       \`\`\`bash
-       # To update the system
-       sudo apt update
-       \`\`\`
     `;
 
     const fullPrompt = `${SYSTEM_PROMPT}\n\n[System Context: ${context || 'None'}]\n\nUser Query: ${message}`;
 
-    const result = await model.generateContent(fullPrompt);
-    const response = await result.response;
-    const text = response.text();
+    const tryGenerate = async (modelName: string) => {
+        console.log(`[Chat] Attempting with model: ${modelName}`);
+        const model = genAI.getGenerativeModel({ 
+            model: modelName,
+            safetySettings: [
+                { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE },
+                { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE },
+                { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_NONE },
+                { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE },
+            ]
+        });
+        const result = await model.generateContent(fullPrompt);
+        return await result.response;
+    };
 
-    res.json({ response: text });
+    let response;
+    let usedModel = targetModel;
+
+    try {
+        response = await tryGenerate(targetModel);
+    } catch (err: any) {
+        console.error(`[Chat] Error with ${targetModel}:`, err.message);
+        
+        // Check for retryable errors (Quota, Overloaded, Timeout)
+        const isRetryable = err.message.includes("429") || err.message.includes("503") || err.message.includes("quota");
+        
+        if (isRetryable) {
+            // Swap model
+            const fallbackModel = targetModel.includes("gemma") ? "gemini-2.5-flash" : "gemma-3-27b-it";
+            console.log(`[Chat] ⚠️ Quota/Error limit reached. Auto-switching to fallback: ${fallbackModel}`);
+            usedModel = fallbackModel;
+            try {
+                response = await tryGenerate(fallbackModel);
+            } catch (fallbackErr: any) {
+                throw new Error(`All models failed. Primary: ${err.message}. Fallback: ${fallbackErr.message}`);
+            }
+        } else {
+            throw err;
+        }
+    }
+
+    let text = response.text();
+
+    // --- HOTFIX: Gemma 3 Auto-Correction ---
+    // The model persistently starts commands with '-Command' despite instructions.
+    // We enforce the correction here before sending to frontend.
+    
+    // Fix 1: Replace "-Command" at start of lines with "powershell -Command"
+    text = text.replace(/^-Command\s+/gm, 'powershell -Command ');
+    
+    // Fix 2: If it generates "powershell -Command" inside a bash block, allow it, 
+    // but if it generates raw cmdlets without wrapper, we might miss them, 
+    // but the -Command pattern is the most frequent error.
+
+    res.json({ response: text, usedModel: usedModel });
   } catch (error: any) {
     console.error("Error calling Gemini API:", error);
     res.status(500).json({ response: "Error processing your request: " + error.message });
@@ -268,80 +333,13 @@ io.on("connection", (socket) => {
   let sshStream: any = null;
   let sftp: any = null;
   let conn: Client | null = null;
-  let rdpClient: any = null;
   let termRows = 24;
   let termCols = 80;
-
-  // --- RDP Handling ---
-  socket.on("start-rdp", (config) => {
-      console.log(`Starting RDP connection to ${config.host}`);
-      
-      try {
-          rdpClient = rdp.createClient({
-            domain: config.domain || '.',
-            userName: config.username || 'Administrator',
-            password: config.password || '',
-            enablePerf: false,
-            autoLogin: true,
-            screen: { width: 800, height: 600 }, // Back to small/standard to minimize data
-            locale: 'en',
-            logLevel: 'DEBUG', // Verbose logs
-            vmConnectId: '',
-          }).on('connect', () => {
-              console.log('RDP Connected');
-              socket.emit('rdp-connect');
-              // Hack: Send a shift key press to wake up the screen
-              setTimeout(() => {
-                  if (rdpClient) rdpClient.sendKeyEvent(16, true); // Shift down
-                  if (rdpClient) rdpClient.sendKeyEvent(16, false); // Shift up
-              }, 1000);
-          }).on('bitmap', (bitmap: any) => {
-              // Debug: Check if we are getting data
-              if (bitmap.data && bitmap.data.length > 0) {
-                  socket.emit('rdp-bitmap', { 
-                      x: bitmap.destLeft, 
-                      y: bitmap.destTop, 
-                      width: bitmap.width, 
-                      height: bitmap.height, 
-                      data: bitmap.data.toString('base64') 
-                  });
-              }
-          }).on('close', () => {
-              console.log('RDP Closed');
-              socket.emit('rdp-close');
-          }).on('error', (err: any) => {
-              console.error('RDP Error:', err);
-              let errorMsg = err.message;
-              if (errorMsg && errorMsg.includes("code:5")) {
-                  errorMsg = "Connection blocked by NLA. Please disable 'Network Level Authentication' on the target Windows server to use this web client.";
-              }
-              socket.emit('rdp-error', errorMsg);
-          });
-
-          // Connect with a timeout/retry logic usually, but here direct:
-          rdpClient.connect(config.host, 3389);
-
-      } catch (err: any) {
-          console.error("Failed to initialize RDP client:", err);
-          socket.emit('rdp-error', "RDP Client Initialization Failed: " + err.message);
-      }
-  });
-
-  socket.on("rdp-mouse", (data) => {
-      if (rdpClient) {
-          rdpClient.sendPointerEvent(data.x, data.y, data.button, data.isPressed);
-      }
-  });
-  
-  socket.on("rdp-key", (data) => {
-      if (rdpClient) {
-          rdpClient.sendKeyEvent(data.code, data.isPressed);
-      }
-  });
-
+  let connectionError: string | null = null;
 
   // --- SSH Handling ---
   socket.on("start-ssh", (config) => {
+    connectionError = null; // Reset error on new attempt
     console.log("Start SSH Config received:", { 
         host: config.host, 
         user: config.username, 
@@ -414,6 +412,7 @@ io.on("connection", (socket) => {
         if (err.level === 'client-authentication') {
             msg = `Auth failed. Server accepts: ${err.methods}`;
         }
+        connectionError = msg;
         socket.emit("ssh-error", msg);
     });
 
@@ -431,13 +430,17 @@ io.on("connection", (socket) => {
         });
     } catch (e: any) {
         console.error("SSH Connect Exception:", e);
-        socket.emit("ssh-error", "Connection failed: " + e.message);
+        connectionError = "Connection failed: " + e.message;
+        socket.emit("ssh-error", connectionError);
     }
   });
 
   // --- SFTP Listeners ---
   socket.on("sftp-list", (path) => {
-      if (!sftp) return socket.emit("sftp-error", "SFTP not initialized");
+      if (!sftp) {
+          const msg = connectionError ? `SFTP Error: ${connectionError}` : "SFTP not initialized (Check SSH connection)";
+          return socket.emit("sftp-error", msg);
+      }
       sftp.readdir(path, (err: any, list: any[]) => {
           if (err) return socket.emit("sftp-error", "List error: " + err.message);
           const files = list.map((item: any) => ({
@@ -468,7 +471,10 @@ io.on("connection", (socket) => {
   });
 
   socket.on("sftp-write", ({ path, data }) => { // data is base64
-      if (!sftp) return socket.emit("sftp-error", "SFTP not initialized");
+      if (!sftp) {
+        const msg = connectionError ? `SFTP Error: ${connectionError}` : "SFTP not initialized (Check SSH connection)";
+        return socket.emit("sftp-error", msg);
+      }
       const buffer = Buffer.from(data, 'base64');
       sftp.writeFile(path, buffer, (err: any) => {
           if (err) return socket.emit("sftp-error", "Write error: " + err.message);
@@ -480,7 +486,8 @@ io.on("connection", (socket) => {
       console.log(`[SFTP] Delete request for ${path} (isDir: ${isDir})`);
       if (!sftp) {
           console.error("[SFTP] Error: SFTP not initialized during delete request");
-          return socket.emit("sftp-error", "SFTP not initialized");
+          const msg = connectionError ? `SFTP Error: ${connectionError}` : "SFTP not initialized (Check SSH connection)";
+          return socket.emit("sftp-error", msg);
       }
 
       if (isDir) {

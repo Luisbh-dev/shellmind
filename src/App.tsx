@@ -84,7 +84,7 @@ function App() {
   return (
     <div className={clsx(
         "h-screen w-screen bg-black text-zinc-300 grid overflow-hidden font-sans transition-all duration-300 ease-in-out",
-        isChatOpen ? "grid-cols-[260px_1fr_380px]" : "grid-cols-[260px_1fr]"
+        isChatOpen ? "grid-cols-[260px_1fr_380px]" : "grid-cols-[260px_1fr_0px]"
     )}>
       {/* Column 1: Sidebar */}
       <aside className="border-r border-zinc-800 bg-zinc-900/50 flex flex-col h-full overflow-hidden min-h-0">
@@ -227,11 +227,16 @@ function App() {
       </main>
 
       {/* Column 3: AI Chat */}
-      {isChatOpen && (
-        <aside className="border-l border-zinc-800 bg-zinc-900/30 flex flex-col h-full overflow-hidden min-h-0">
+      <aside 
+        className={clsx(
+            "border-l border-zinc-800 bg-zinc-900/30 flex flex-col h-full overflow-hidden min-h-0 transition-all duration-300 relative",
+            isChatOpen ? "w-[380px]" : "w-0 border-l-0"
+        )}
+      >
+        <div className="w-[380px] h-full absolute right-0 top-0 bottom-0">
             <Chat activeServer={activeServer} terminalHistory={terminalHistoryRef} />
-        </aside>
-      )}
+        </div>
+      </aside>
 
       <AddServerModal 
         isOpen={isAddServerOpen} 

@@ -25,8 +25,32 @@ export default function Chat({ activeServer, terminalHistory }: ChatProps) {
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isAutoRun, setIsAutoRun] = useState(false);
+  const [selectedModel, setSelectedModel] = useState("gemini-2.5-flash");
   
   const messagesContainerRef = useRef<HTMLDivElement>(null);
+
+  // Load preferred model
+  useEffect(() => {
+      fetch("http://localhost:3001/api/config/model")
+        .then(res => res.json())
+        .then(data => {
+            if (data.model) setSelectedModel(data.model);
+        })
+        .catch(err => console.error("Failed to load model config", err));
+  }, []);
+
+  const handleModelChange = async (newModel: string) => {
+      setSelectedModel(newModel);
+      try {
+          await fetch("http://localhost:3001/api/config/model", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ model: newModel })
+          });
+      } catch (e) {
+          console.error("Failed to save model preference", e);
+      }
+  };
 
   const toggleAutoRun = () => {
       if (!isAutoRun) {
@@ -188,13 +212,25 @@ export default function Chat({ activeServer, terminalHistory }: ChatProps) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ 
             message: lastMsg.content,
-            context: context 
+            context: context,
+            model: selectedModel
         }),
       });
 
       const data = await res.json();
       const responseContent = data.response || "Sorry, I couldn't process that.";
       
+      // Check if model auto-switched
+      if (data.usedModel && data.usedModel !== selectedModel) {
+          setSelectedModel(data.usedModel); // Update selector
+          const displayModelName = data.usedModel.includes("gemma") ? "Gemma 3 (Standard)" : "Flash 2.5 (Smart)";
+          setMessages(prev => [...prev, {
+              id: "sys-switch-" + Date.now(),
+              role: "assistant",
+              content: `⚠️ **System Notice**: Automatically switched to **${displayModelName}** due to provider limits.`
+          }]);
+      }
+
       const aiMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: "assistant",
@@ -273,7 +309,17 @@ export default function Chat({ activeServer, terminalHistory }: ChatProps) {
       >
         <div className="flex items-center gap-2" style={{ WebkitAppRegion: 'no-drag' } as any}>
             <Sparkles className="w-3.5 h-3.5 text-teal-500" />
-            <span className="font-bold text-xs text-zinc-300 uppercase tracking-wider">AI Assistant</span>
+            <span className="font-bold text-xs text-zinc-300 uppercase tracking-wider hidden sm:inline">AI Assistant</span>
+            
+            {/* Model Selector */}
+            <select 
+                value={selectedModel} 
+                onChange={(e) => handleModelChange(e.target.value)}
+                className="bg-zinc-900 text-[10px] text-zinc-400 border border-zinc-700 rounded px-1 py-0.5 outline-none focus:border-teal-500 ml-2"
+            >
+                <option value="gemini-2.5-flash">Flash 2.5 (Smart)</option>
+                <option value="gemma-3-27b-it">Gemma 3 (Standard)</option>
+            </select>
         </div>
         <div className="flex items-center gap-2" style={{ WebkitAppRegion: 'no-drag' } as any}>
             <button 
