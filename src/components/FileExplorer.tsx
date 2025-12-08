@@ -13,14 +13,15 @@ interface FileItem {
 
 interface FileExplorerProps {
     server: any;
+    isVisible: boolean;
 }
 
-export default function FileExplorer({ server }: FileExplorerProps) {
+export default function FileExplorer({ server, isVisible }: FileExplorerProps) {
     const [files, setFiles] = useState<FileItem[]>([]);
-    const [currentPath, setCurrentPath] = useState(server.type === 'windows' ? '/' : '/root'); 
+    const [currentPath, setCurrentPath] = useState(server.type === 'windows' ? '/' : '/root');
     const [socket, setSocket] = useState<Socket | null>(null);
     const [isLoading, setIsLoading] = useState(false);
-    
+
     const currentPathRef = useRef(currentPath);
 
     useEffect(() => {
@@ -31,6 +32,12 @@ export default function FileExplorer({ server }: FileExplorerProps) {
         setFiles([]);
         setCurrentPath(server.type === 'windows' ? '/' : '/root');
     }, [server.id]);
+
+    useEffect(() => {
+        if (isVisible && socket) {
+            socket.emit('sftp-list', currentPathRef.current);
+        }
+    }, [isVisible, socket]);
 
     const formatSize = (bytes: number) => {
         if (bytes === 0) return '0 B';
@@ -45,7 +52,7 @@ export default function FileExplorer({ server }: FileExplorerProps) {
         setSocket(newSocket);
 
         newSocket.on('connect', () => {
-            const portToUse = server.type === 'windows' 
+            const portToUse = server.type === 'windows'
                 ? (server.ssh_port || 22)
                 : (server.port || 22);
 
@@ -58,8 +65,8 @@ export default function FileExplorer({ server }: FileExplorerProps) {
             });
         });
 
-        newSocket.on('ssh-output', () => {}); 
-        
+        newSocket.on('ssh-output', () => { });
+
         newSocket.on('sftp-files', ({ path, files }: { path: string, files: FileItem[] }) => {
             setFiles(files);
             setCurrentPath(path);
@@ -82,10 +89,12 @@ export default function FileExplorer({ server }: FileExplorerProps) {
             newSocket.emit('sftp-list', currentPathRef.current);
         });
 
-        setTimeout(() => {
-            newSocket.emit('sftp-list', currentPathRef.current);
-            setIsLoading(true);
-        }, 2000);
+        if (isVisible) {
+            setTimeout(() => {
+                newSocket.emit('sftp-list', currentPathRef.current);
+                setIsLoading(true);
+            }, 500);
+        }
 
         return () => {
             newSocket.disconnect();
@@ -107,7 +116,7 @@ export default function FileExplorer({ server }: FileExplorerProps) {
     const handleDownload = (file: FileItem) => {
         if (!socket) return;
         socket.emit('sftp-read', currentPath + '/' + file.name);
-        
+
         socket.once('sftp-file-content', ({ path, data }) => {
             const link = document.createElement('a');
             link.href = `data:application/octet-stream;base64,${data}`;
@@ -128,7 +137,7 @@ export default function FileExplorer({ server }: FileExplorerProps) {
             setIsLoading(true);
             const separator = currentPath.endsWith('/') ? '' : '/';
             const fullPath = `${currentPath}${separator}${file.name}`;
-            
+
             socket.emit('sftp-write', {
                 path: fullPath,
                 data: base64
@@ -158,10 +167,10 @@ export default function FileExplorer({ server }: FileExplorerProps) {
                 <button onClick={handleUp} className="p-1.5 hover:bg-zinc-800 rounded text-zinc-400" title="Go Up">
                     <ArrowUp className="w-4 h-4" />
                 </button>
-                
+
                 <div className="flex-1 flex items-center bg-black border border-zinc-800 rounded px-2 py-1 text-xs text-zinc-400 font-mono">
                     <span className="mr-2 text-zinc-600">sftp://{server.ip}</span>
-                    <input 
+                    <input
                         className="bg-transparent w-full outline-none text-zinc-200"
                         value={currentPath}
                         onChange={(e) => setCurrentPath(e.target.value)}
@@ -174,8 +183,8 @@ export default function FileExplorer({ server }: FileExplorerProps) {
                     <input type="file" className="hidden" onChange={handleUpload} />
                 </label>
 
-                <button 
-                    onClick={() => handleNavigate(currentPath)} 
+                <button
+                    onClick={() => handleNavigate(currentPath)}
                     className={clsx("p-1.5 hover:bg-zinc-800 rounded text-zinc-400", isLoading && "animate-spin")}
                     title="Refresh"
                 >
@@ -197,8 +206,8 @@ export default function FileExplorer({ server }: FileExplorerProps) {
                     </thead>
                     <tbody className="divide-y divide-zinc-800/50">
                         {files.map((file) => (
-                            <tr 
-                                key={file.name} 
+                            <tr
+                                key={file.name}
                                 className="hover:bg-zinc-800/30 cursor-pointer group transition-colors"
                                 onDoubleClick={() => file.isDir ? handleNavigate(currentPath === '/' ? `/${file.name}` : `${currentPath}/${file.name}`) : handleDownload(file)}
                             >
@@ -219,7 +228,7 @@ export default function FileExplorer({ server }: FileExplorerProps) {
                                 </td>
                                 <td className="px-4 py-2 text-center flex items-center justify-end gap-1">
                                     {!file.isDir && (
-                                        <button 
+                                        <button
                                             onClick={(e) => { e.stopPropagation(); handleDownload(file); }}
                                             className="p-1 hover:bg-zinc-700 rounded text-zinc-500 hover:text-zinc-300"
                                             title="Download"
@@ -227,7 +236,7 @@ export default function FileExplorer({ server }: FileExplorerProps) {
                                             <Download className="w-3 h-3" />
                                         </button>
                                     )}
-                                    <button 
+                                    <button
                                         onClick={(e) => { e.stopPropagation(); handleDelete(file); }}
                                         className="p-1 hover:bg-red-900/30 rounded text-zinc-500 hover:text-red-400"
                                         title="Delete"

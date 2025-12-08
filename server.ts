@@ -12,11 +12,11 @@ dotenv.config();
 const app = express();
 const httpServer = createServer(app);
 const io = new Server(httpServer, {
-  cors: {
-    origin: "*", // Allow Vite dev server
-    methods: ["GET", "POST"]
-  },
-  transports: ['websocket', 'polling'] // Allow both but prefer websocket
+    cors: {
+        origin: "*", // Allow Vite dev server
+        methods: ["GET", "POST"]
+    },
+    transports: ['websocket', 'polling'] // Allow both but prefer websocket
 });
 
 app.use(cors());
@@ -49,15 +49,15 @@ app.post("/api/servers", (req, res) => {
         const sql = "INSERT INTO servers (name, ip, type, username, password, port, ssh_port) VALUES (?,?,?,?,?,?,?)";
         // For Linux: port is SSH. For Windows: port is RDP, ssh_port is SSH.
         const params = [
-            name, 
-            ip, 
-            type, 
-            username, 
-            password, 
+            name,
+            ip,
+            type,
+            username,
+            password,
             port || (type === 'windows' ? 3389 : 22),
             ssh_port || 22
         ];
-        
+
         console.log("Executing SQL:", sql, "Params:", params);
 
         db.run(sql, params, function (err) {
@@ -84,17 +84,17 @@ app.put("/api/servers/:id", (req, res) => {
     const { name, ip, type, username, password, port, os_detail, ssh_port } = req.body;
     const sql = "UPDATE servers SET name = ?, ip = ?, type = ?, username = ?, password = ?, port = ?, os_detail = ?, ssh_port = ? WHERE id = ?";
     const params = [
-        name, 
-        ip, 
-        type, 
-        username, 
-        password, 
-        port || (type === 'windows' ? 3389 : 22), 
-        os_detail, 
+        name,
+        ip,
+        type,
+        username,
+        password,
+        port || (type === 'windows' ? 3389 : 22),
+        os_detail,
         ssh_port || 22,
         req.params.id
     ];
-    
+
     db.run(sql, params, function (err) {
         if (err) {
             console.error("Database Update Error:", err.message);
@@ -111,7 +111,7 @@ app.put("/api/servers/:id", (req, res) => {
 // Patch OS detail
 app.patch("/api/servers/:id/os", (req, res) => {
     const { os_detail } = req.body;
-    db.run("UPDATE servers SET os_detail = ? WHERE id = ?", [os_detail, req.params.id], function(err) {
+    db.run("UPDATE servers SET os_detail = ? WHERE id = ?", [os_detail, req.params.id], function (err) {
         if (err) return res.status(500).json({ error: err.message });
         res.json({ message: "success" });
     });
@@ -161,44 +161,44 @@ app.post("/api/config/apikey", (req, res) => {
 
 // Chat API Route
 app.post("/api/chat", async (req: any, res: any) => {
-  try {
-    const { message, context, model: requestedModel } = req.body;
+    try {
+        const { message, context, model: requestedModel } = req.body;
 
-    let apiKey = process.env.GEMINI_API_KEY;
-    
-    // If not in env, check DB
-    if (!apiKey) {
-        const row: any = await new Promise((resolve, reject) => {
-            db.get("SELECT value FROM settings WHERE key = 'GEMINI_API_KEY'", [], (err, row) => {
-                if (err) reject(err);
-                else resolve(row);
+        let apiKey = process.env.GEMINI_API_KEY;
+
+        // If not in env, check DB
+        if (!apiKey) {
+            const row: any = await new Promise((resolve, reject) => {
+                db.get("SELECT value FROM settings WHERE key = 'GEMINI_API_KEY'", [], (err, row) => {
+                    if (err) reject(err);
+                    else resolve(row);
+                });
             });
-        });
-        if (row && row.value) {
-            apiKey = row.value;
+            if (row && row.value) {
+                apiKey = row.value;
+            }
         }
-    }
 
-    if (!apiKey) {
-      return res.json({ response: "Please set your GEMINI_API_KEY in Settings or Environment variables." });
-    }
+        if (!apiKey) {
+            return res.json({ response: "Please set your GEMINI_API_KEY in Settings or Environment variables." });
+        }
 
-    // Determine Model
-    let targetModel = requestedModel;
-    if (!targetModel) {
-         // Check DB if not provided in request
-         const row: any = await new Promise((resolve) => {
-            db.get("SELECT value FROM settings WHERE key = 'PREFERRED_MODEL'", [], (err, row) => resolve(row));
-         });
-         // Default to Flash if nothing configured 
-         targetModel = (row && row.value) ? row.value : "gemini-2.5-flash";
-    }
+        // Determine Model
+        let targetModel = requestedModel;
+        if (!targetModel) {
+            // Check DB if not provided in request
+            const row: any = await new Promise((resolve) => {
+                db.get("SELECT value FROM settings WHERE key = 'PREFERRED_MODEL'", [], (err, row) => resolve(row));
+            });
+            // Default to Flash if nothing configured 
+            targetModel = (row && row.value) ? row.value : "gemini-2.5-flash";
+        }
 
-    console.log(`[Chat] Using Gemini Model: ${targetModel}`);
+        console.log(`[Chat] Using Gemini Model: ${targetModel}`);
 
-    const genAI = new GoogleGenerativeAI(apiKey);
+        const genAI = new GoogleGenerativeAI(apiKey);
 
-    const SYSTEM_PROMPT = `You are ShellMind AI, an expert Linux/Windows System Administrator assistant. 
+        const SYSTEM_PROMPT = `You are ShellMind AI, an expert Linux/Windows System Administrator assistant. 
     Your goal is to help manage servers, write scripts, debug errors, and explain commands.
     
     CRITICAL BEHAVIORAL RULES:
@@ -263,271 +263,271 @@ app.post("/api/chat", async (req: any, res: any) => {
        \`\`\`
     `;
 
-    const fullPrompt = `${SYSTEM_PROMPT}\n\n[System Context: ${context || 'None'}]\n\nUser Query: ${message}`;
+        const fullPrompt = `${SYSTEM_PROMPT}\n\n[System Context: ${context || 'None'}]\n\nUser Query: ${message}`;
 
-    const tryGenerate = async (modelName: string) => {
-        console.log(`[Chat] Attempting with model: ${modelName}`);
-        const model = genAI.getGenerativeModel({ 
-            model: modelName,
-            safetySettings: [
-                { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE },
-                { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE },
-                { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_NONE },
-                { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE },
-            ]
-        });
-        const result = await model.generateContent(fullPrompt);
-        return await result.response;
-    };
+        const tryGenerate = async (modelName: string) => {
+            console.log(`[Chat] Attempting with model: ${modelName}`);
+            const model = genAI.getGenerativeModel({
+                model: modelName,
+                safetySettings: [
+                    { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE },
+                    { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE },
+                    { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_NONE },
+                    { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE },
+                ]
+            });
+            const result = await model.generateContent(fullPrompt);
+            return await result.response;
+        };
 
-    let response;
-    let usedModel = targetModel;
+        let response;
+        let usedModel = targetModel;
 
-    try {
-        response = await tryGenerate(targetModel);
-    } catch (err: any) {
-        console.error(`[Chat] Error with ${targetModel}:`, err.message);
-        
-        // Check for retryable errors (Quota, Overloaded, Timeout)
-        const isRetryable = err.message.includes("429") || err.message.includes("503") || err.message.includes("quota");
-        
-        if (isRetryable) {
-            // Swap model
-            const fallbackModel = targetModel.includes("gemma") ? "gemini-2.5-flash" : "gemma-3-27b-it";
-            console.log(`[Chat] ⚠️ Quota/Error limit reached. Auto-switching to fallback: ${fallbackModel}`);
-            usedModel = fallbackModel;
-            try {
-                response = await tryGenerate(fallbackModel);
-            } catch (fallbackErr: any) {
-                throw new Error(`All models failed. Primary: ${err.message}. Fallback: ${fallbackErr.message}`);
+        try {
+            response = await tryGenerate(targetModel);
+        } catch (err: any) {
+            console.error(`[Chat] Error with ${targetModel}:`, err.message);
+
+            // Check for retryable errors (Quota, Overloaded, Timeout)
+            const isRetryable = err.message.includes("429") || err.message.includes("503") || err.message.includes("quota");
+
+            if (isRetryable) {
+                // Swap model
+                const fallbackModel = targetModel.includes("gemma") ? "gemini-2.5-flash" : "gemma-3-27b-it";
+                console.log(`[Chat] ⚠️ Quota/Error limit reached. Auto-switching to fallback: ${fallbackModel}`);
+                usedModel = fallbackModel;
+                try {
+                    response = await tryGenerate(fallbackModel);
+                } catch (fallbackErr: any) {
+                    throw new Error(`All models failed. Primary: ${err.message}. Fallback: ${fallbackErr.message}`);
+                }
+            } else {
+                throw err;
             }
-        } else {
-            throw err;
         }
+
+        let text = response.text();
+
+        // --- HOTFIX: Gemma 3 Auto-Correction ---
+        // The model persistently starts commands with '-Command' despite instructions.
+        // We enforce the correction here before sending to frontend.
+
+        // Fix 1: Replace "-Command" at start of lines with "powershell -Command"
+        text = text.replace(/^-Command\s+/gm, 'powershell -Command ');
+
+        // Fix 2: If it generates "powershell -Command" inside a bash block, allow it, 
+        // but if it generates raw cmdlets without wrapper, we might miss them, 
+        // but the -Command pattern is the most frequent error.
+
+        res.json({ response: text, usedModel: usedModel });
+    } catch (error: any) {
+        console.error("Error calling Gemini API:", error);
+        res.status(500).json({ response: "Error processing your request: " + error.message });
     }
-
-    let text = response.text();
-
-    // --- HOTFIX: Gemma 3 Auto-Correction ---
-    // The model persistently starts commands with '-Command' despite instructions.
-    // We enforce the correction here before sending to frontend.
-    
-    // Fix 1: Replace "-Command" at start of lines with "powershell -Command"
-    text = text.replace(/^-Command\s+/gm, 'powershell -Command ');
-    
-    // Fix 2: If it generates "powershell -Command" inside a bash block, allow it, 
-    // but if it generates raw cmdlets without wrapper, we might miss them, 
-    // but the -Command pattern is the most frequent error.
-
-    res.json({ response: text, usedModel: usedModel });
-  } catch (error: any) {
-    console.error("Error calling Gemini API:", error);
-    res.status(500).json({ response: "Error processing your request: " + error.message });
-  }
 });
 
 // Socket.io Handling
 io.on("connection", (socket) => {
-  console.log("Client connected", socket.id);
+    console.log("Client connected", socket.id);
 
-  let sshStream: any = null;
-  let sftp: any = null;
-  let conn: Client | null = null;
-  let termRows = 24;
-  let termCols = 80;
-  let connectionError: string | null = null;
+    let sshStream: any = null;
+    let sftp: any = null;
+    let conn: Client | null = null;
+    let termRows = 24;
+    let termCols = 80;
+    let connectionError: string | null = null;
 
-  // --- SSH Handling ---
-  socket.on("start-ssh", (config) => {
-    connectionError = null; // Reset error on new attempt
-    console.log("Start SSH Config received:", { 
-        host: config.host, 
-        user: config.username, 
-        type: config.type,
-        port: config.port,
-        passLength: config.password ? config.password.length : 0,
-        passFirstChar: config.password ? config.password[0] : 'null'
+    // --- SSH Handling ---
+    socket.on("start-ssh", (config) => {
+        connectionError = null; // Reset error on new attempt
+        console.log("Start SSH Config received:", {
+            host: config.host,
+            user: config.username,
+            type: config.type,
+            port: config.port,
+            passLength: config.password ? config.password.length : 0,
+            passFirstChar: config.password ? config.password[0] : 'null'
+        });
+
+        const host = config.host?.replace(/[\s\u00A0]+/g, '').trim();
+        const username = config.username?.trim() || "root";
+        const isWindows = config.type === 'windows';
+        const port = config.port || 22;
+
+        conn = new Client();
+
+        conn.on("ready", () => {
+            socket.emit("ssh-output", "\r\nConnected to " + host + ":" + port + "\r\n");
+
+            // Initialize SFTP
+            conn!.sftp((err, sftpWrapper) => {
+                if (err) {
+                    console.error("SFTP Init Error:", err);
+                } else {
+                    sftp = sftpWrapper;
+                    console.log("SFTP Session ready");
+                }
+            });
+
+            // Detect OS immediately
+            const osCheckCmd = isWindows
+                ? "ver"
+                : "grep PRETTY_NAME /etc/os-release || uname -sr";
+
+            conn!.exec(osCheckCmd, (err, stream) => {
+                if (err) return;
+                let osData = "";
+                stream.on("data", (d: any) => osData += d);
+                stream.on("close", () => {
+                    const osName = osData.replace(/PRETTY_NAME=|"/g, '').trim();
+                    socket.emit("os-detected", osName);
+                });
+            });
+
+            // Use standard xterm type for colors
+            conn!.shell({ rows: termRows, cols: termCols, term: 'xterm-256color' }, (err, stream) => {
+                if (err) {
+                    socket.emit("ssh-error", err.message);
+                    return;
+                }
+
+                sshStream = stream;
+
+                socket.emit("ssh-output", "\r\nWelcome to ShellMind SSH Client\r\n");
+
+                stream.on("close", () => {
+                    conn!.end();
+                    socket.emit("ssh-output", "\r\nConnection closed.\r\n");
+                }).on("data", (data: any) => {
+                    socket.emit("ssh-output", data.toString());
+                });
+            });
+        }).on("keyboard-interactive", (name, instructions, instructionsLang, prompts, finish) => {
+            console.log("SSH Keyboard-Interactive Prompt:", prompts);
+            // Auto-respond to keyboard-interactive prompts (usually password)
+            finish(prompts.map(() => config.password));
+        }).on("error", (err: any) => {
+            console.error("SSH Connection Error Full:", err);
+            let msg = err.message;
+            if (err.level === 'client-authentication') {
+                msg = `Auth failed. Server accepts: ${err.methods}`;
+            }
+            connectionError = msg;
+            socket.emit("ssh-error", msg);
+        });
+
+        try {
+            // Clean minimal config first
+            conn.connect({
+                host: host,
+                port: port,
+                username: username,
+                password: config.password,
+                tryKeyboard: false, // Force password auth first since server supports it
+                hostVerifier: () => true, // Accept any host key explicitly
+                readyTimeout: 20000,
+                debug: (str) => console.log("[SSH Debug]", str)
+            });
+        } catch (e: any) {
+            console.error("SSH Connect Exception:", e);
+            connectionError = "Unable to connect due to: " + e.message;
+            socket.emit("ssh-error", connectionError);
+        }
     });
 
-    const host = config.host?.replace(/[\s\u00A0]+/g, '').trim();
-    const username = config.username?.trim() || "root";
-    const isWindows = config.type === 'windows';
-    const port = config.port || 22;
-
-    conn = new Client();
-
-    conn.on("ready", () => {
-      socket.emit("ssh-output", "\r\nConnected to " + host + ":" + port + "\r\n");
-
-      // Initialize SFTP
-      conn!.sftp((err, sftpWrapper) => {
-          if (err) {
-              console.error("SFTP Init Error:", err);
-          } else {
-              sftp = sftpWrapper;
-              console.log("SFTP Session ready");
-          }
-      });
-
-      // Detect OS immediately
-      const osCheckCmd = isWindows 
-        ? "ver" 
-        : "grep PRETTY_NAME /etc/os-release || uname -sr";
-
-      conn!.exec(osCheckCmd, (err, stream) => {
-          if (err) return;
-          let osData = "";
-          stream.on("data", (d: any) => osData += d);
-          stream.on("close", () => {
-              const osName = osData.replace(/PRETTY_NAME=|"/g, '').trim();
-              socket.emit("os-detected", osName);
-          });
-      });
-      
-      // Use standard xterm type for colors
-      conn!.shell({ rows: termRows, cols: termCols, term: 'xterm-256color' }, (err, stream) => {
-        if (err) {
-          socket.emit("ssh-error", err.message);
-          return;
+    // --- SFTP Listeners ---
+    socket.on("sftp-list", (path) => {
+        if (!sftp) {
+            const msg = connectionError ? `SFTP Error: ${connectionError}` : "Unable to establish file connection. Please ensure the server is reachable.";
+            return socket.emit("sftp-error", msg);
         }
-
-        sshStream = stream;
-
-        socket.emit("ssh-output", "\r\nWelcome to ShellMind SSH Client\r\n");
-
-        stream.on("close", () => {
-          conn!.end();
-          socket.emit("ssh-output", "\r\nConnection closed.\r\n");
-        }).on("data", (data: any) => {
-          socket.emit("ssh-output", data.toString());
+        sftp.readdir(path, (err: any, list: any[]) => {
+            if (err) return socket.emit("sftp-error", "List error: " + err.message);
+            const files = list.map((item: any) => ({
+                name: item.filename,
+                isDir: item.attrs.isDirectory(),
+                size: item.attrs.size,
+                mtime: item.attrs.mtime,
+                permissions: item.attrs.mode
+            }));
+            // Sort: Directories first, then alphabetical
+            files.sort((a: any, b: any) => {
+                if (a.isDir === b.isDir) return a.name.localeCompare(b.name);
+                return a.isDir ? -1 : 1;
+            });
+            socket.emit("sftp-files", { path, files });
         });
-      });
-    }).on("keyboard-interactive", (name, instructions, instructionsLang, prompts, finish) => {
-        console.log("SSH Keyboard-Interactive Prompt:", prompts);
-        // Auto-respond to keyboard-interactive prompts (usually password)
-        finish(prompts.map(() => config.password));
-    }).on("error", (err: any) => {
-        console.error("SSH Connection Error Full:", err);
-        let msg = err.message;
-        if (err.level === 'client-authentication') {
-            msg = `Auth failed. Server accepts: ${err.methods}`;
-        }
-        connectionError = msg;
-        socket.emit("ssh-error", msg);
     });
 
-    try {
-        // Clean minimal config first
-        conn.connect({
-          host: host,
-          port: port,
-          username: username,
-          password: config.password,
-          tryKeyboard: false, // Force password auth first since server supports it
-          hostVerifier: () => true, // Accept any host key explicitly
-          readyTimeout: 20000,
-          debug: (str) => console.log("[SSH Debug]", str)
+    socket.on("sftp-read", (path) => {
+        if (!sftp) return socket.emit("sftp-error", "SFTP not initialized");
+        // Limit size for safety? For now, simple read.
+        // Using fastRead stream or readFile
+        sftp.readFile(path, (err: any, buffer: Buffer) => {
+            if (err) return socket.emit("sftp-error", "Read error: " + err.message);
+            // Send as base64 to avoid binary encoding issues in socket.io json default
+            socket.emit("sftp-file-content", { path, data: buffer.toString('base64') });
         });
-    } catch (e: any) {
-        console.error("SSH Connect Exception:", e);
-        connectionError = "Connection failed: " + e.message;
-        socket.emit("ssh-error", connectionError);
-    }
-  });
+    });
 
-  // --- SFTP Listeners ---
-  socket.on("sftp-list", (path) => {
-      if (!sftp) {
-          const msg = connectionError ? `SFTP Error: ${connectionError}` : "SFTP not initialized (Check SSH connection)";
-          return socket.emit("sftp-error", msg);
-      }
-      sftp.readdir(path, (err: any, list: any[]) => {
-          if (err) return socket.emit("sftp-error", "List error: " + err.message);
-          const files = list.map((item: any) => ({
-              name: item.filename,
-              isDir: item.attrs.isDirectory(),
-              size: item.attrs.size,
-              mtime: item.attrs.mtime,
-              permissions: item.attrs.mode
-          }));
-          // Sort: Directories first, then alphabetical
-          files.sort((a: any, b: any) => {
-              if (a.isDir === b.isDir) return a.name.localeCompare(b.name);
-              return a.isDir ? -1 : 1;
-          });
-          socket.emit("sftp-files", { path, files });
-      });
-  });
+    socket.on("sftp-write", ({ path, data }) => { // data is base64
+        if (!sftp) {
+            const msg = connectionError ? `SFTP Error: ${connectionError}` : "Unable to establish file connection. Please ensure the server is reachable.";
+            return socket.emit("sftp-error", msg);
+        }
+        const buffer = Buffer.from(data, 'base64');
+        sftp.writeFile(path, buffer, (err: any) => {
+            if (err) return socket.emit("sftp-error", "Write error: " + err.message);
+            socket.emit("sftp-write-success", path);
+        });
+    });
 
-  socket.on("sftp-read", (path) => {
-      if (!sftp) return socket.emit("sftp-error", "SFTP not initialized");
-      // Limit size for safety? For now, simple read.
-      // Using fastRead stream or readFile
-      sftp.readFile(path, (err: any, buffer: Buffer) => {
-          if (err) return socket.emit("sftp-error", "Read error: " + err.message);
-          // Send as base64 to avoid binary encoding issues in socket.io json default
-          socket.emit("sftp-file-content", { path, data: buffer.toString('base64') });
-      });
-  });
+    socket.on("sftp-delete", ({ path, isDir }) => {
+        console.log(`[SFTP] Delete request for ${path} (isDir: ${isDir})`);
+        if (!sftp) {
+            console.error("[SFTP] Error: SFTP not initialized during delete request");
+            const msg = connectionError ? `SFTP Error: ${connectionError}` : "Unable to establish file connection. Please ensure the server is reachable.";
+            return socket.emit("sftp-error", msg);
+        }
 
-  socket.on("sftp-write", ({ path, data }) => { // data is base64
-      if (!sftp) {
-        const msg = connectionError ? `SFTP Error: ${connectionError}` : "SFTP not initialized (Check SSH connection)";
-        return socket.emit("sftp-error", msg);
-      }
-      const buffer = Buffer.from(data, 'base64');
-      sftp.writeFile(path, buffer, (err: any) => {
-          if (err) return socket.emit("sftp-error", "Write error: " + err.message);
-          socket.emit("sftp-write-success", path);
-      });
-  });
+        if (isDir) {
+            sftp.rmdir(path, (err: any) => {
+                if (err) {
+                    console.error("[SFTP] Rmdir Error:", err);
+                    return socket.emit("sftp-error", "Delete directory error: " + err.message);
+                }
+                console.log("[SFTP] Directory deleted:", path);
+                socket.emit("sftp-delete-success", path);
+            });
+        } else {
+            sftp.unlink(path, (err: any) => {
+                if (err) {
+                    console.error("[SFTP] Unlink Error:", err);
+                    return socket.emit("sftp-error", "Delete file error: " + err.message);
+                }
+                console.log("[SFTP] File deleted:", path);
+                socket.emit("sftp-delete-success", path);
+            });
+        }
+    });
 
-  socket.on("sftp-delete", ({ path, isDir }) => {
-      console.log(`[SFTP] Delete request for ${path} (isDir: ${isDir})`);
-      if (!sftp) {
-          console.error("[SFTP] Error: SFTP not initialized during delete request");
-          const msg = connectionError ? `SFTP Error: ${connectionError}` : "SFTP not initialized (Check SSH connection)";
-          return socket.emit("sftp-error", msg);
-      }
+    socket.on("ssh-input", (data) => {
+        if (sshStream) {
+            sshStream.write(data);
+        }
+    });
 
-      if (isDir) {
-          sftp.rmdir(path, (err: any) => {
-              if (err) {
-                  console.error("[SFTP] Rmdir Error:", err);
-                  return socket.emit("sftp-error", "Delete directory error: " + err.message);
-              }
-              console.log("[SFTP] Directory deleted:", path);
-              socket.emit("sftp-delete-success", path);
-          });
-      } else {
-          sftp.unlink(path, (err: any) => {
-              if (err) {
-                  console.error("[SFTP] Unlink Error:", err);
-                  return socket.emit("sftp-error", "Delete file error: " + err.message);
-              }
-              console.log("[SFTP] File deleted:", path);
-              socket.emit("sftp-delete-success", path);
-          });
-      }
-  });
+    socket.on("resize", ({ cols, rows }) => {
+        termCols = cols;
+        termRows = rows;
+        if (sshStream && typeof sshStream.setWindow === "function") {
+            sshStream.setWindow(rows, cols, 0, 0);
+        }
+    });
 
-  socket.on("ssh-input", (data) => {
-    if (sshStream) {
-      sshStream.write(data);
-    }
-  });
-
-  socket.on("resize", ({ cols, rows }) => {
-    termCols = cols;
-    termRows = rows;
-    if (sshStream && typeof sshStream.setWindow === "function") {
-      sshStream.setWindow(rows, cols, 0, 0);
-    }
-  });
-
-  socket.on("disconnect", () => {
-    if (conn) conn.end();
-  });
+    socket.on("disconnect", () => {
+        if (conn) conn.end();
+    });
 });
 
 // Global error handling to prevent RDP crashes from killing the server
@@ -540,5 +540,5 @@ process.on('unhandledRejection', (reason, promise) => {
 });
 
 httpServer.listen(PORT, () => {
-  console.log(`> Backend ready on http://localhost:${PORT}`);
+    console.log(`> Backend ready on http://localhost:${PORT}`);
 });
