@@ -1,6 +1,6 @@
 "use client";
 
-import { Terminal, Plus, Search, Monitor, Server as ServerIcon, MoreVertical, Edit2, Trash2, Codepen, Disc, Box, AppWindow } from "lucide-react";
+import { Terminal, Plus, Search, Monitor, Server as ServerIcon, MoreVertical, Edit2, Trash2, Codepen, Disc, Box, AppWindow, Folder } from "lucide-react";
 import { clsx } from "clsx";
 import { useState } from "react";
 
@@ -40,6 +40,10 @@ export default function Sidebar({ servers, onSelectServer, activeServerId, onAdd
             return <AppWindow className="w-3.5 h-3.5 text-blue-400" />;
         }
 
+        if (server.type === 'ftp') {
+            return <Folder className="w-3.5 h-3.5 text-yellow-500" />;
+        }
+
         if (os.includes('ubuntu')) return <Codepen className="w-3.5 h-3.5 text-orange-500" />;
         if (os.includes('debian')) return <Disc className="w-3.5 h-3.5 text-red-500" />;
         if (os.includes('centos') || os.includes('fedora') || os.includes('red hat')) return <Box className="w-3.5 h-3.5 text-blue-500" />;
@@ -53,6 +57,7 @@ export default function Sidebar({ servers, onSelectServer, activeServerId, onAdd
         if (lower.includes('debian')) return "bg-red-900/30 text-red-300 border-red-800/50";
         if (lower.includes('centos')) return "bg-purple-900/30 text-purple-300 border-purple-800/50";
         if (lower.includes('windows')) return "bg-blue-900/30 text-blue-300 border-blue-800/50";
+        if (lower.includes('ftp')) return "bg-yellow-900/30 text-yellow-300 border-yellow-800/50";
         return "bg-zinc-800 text-zinc-400 border-zinc-700";
     };
 
@@ -109,12 +114,12 @@ export default function Sidebar({ servers, onSelectServer, activeServerId, onAdd
                                 <div className="flex flex-col min-w-0 flex-1 gap-1">
                                     <div className="flex items-center gap-2 w-full">
                                         <span className="text-xs font-medium truncate text-zinc-200">{server.name}</span>
-                                        {server.os_detail && (
+                                        {(server.os_detail || server.type === 'ftp') && (
                                             <span className={clsx(
                                                 "px-1.5 py-[1px] rounded-md text-[9px] font-bold border shadow-sm shrink-0 uppercase tracking-wide",
-                                                getOsBadgeColor(server.os_detail)
+                                                getOsBadgeColor(server.os_detail || (server.type === 'ftp' ? 'ftp' : ''))
                                             )}>
-                                                {server.os_detail.split(' ')[0]}
+                                                {server.type === 'ftp' ? 'FTP' : (server.os_detail?.split(' ')[0])}
                                             </span>
                                         )}
                                     </div>

@@ -18,9 +18,10 @@ interface FileExplorerProps {
 
 export default function FileExplorer({ server, isVisible }: FileExplorerProps) {
     const [files, setFiles] = useState<FileItem[]>([]);
-    const [currentPath, setCurrentPath] = useState(server.type === 'windows' ? '/' : '/root');
+    const [currentPath, setCurrentPath] = useState((server.type === 'windows' || server.type === 'ftp') ? '/' : '/root');
     const [socket, setSocket] = useState<Socket | null>(null);
     const [isLoading, setIsLoading] = useState(false);
+    const [isConnectionReady, setIsConnectionReady] = useState(false);
 
     const currentPathRef = useRef(currentPath);
 
@@ -30,14 +31,12 @@ export default function FileExplorer({ server, isVisible }: FileExplorerProps) {
 
     useEffect(() => {
         setFiles([]);
-        setCurrentPath(server.type === 'windows' ? '/' : '/root');
-    }, [server.id]);
+        // Default to /root for Linux SSH, but / for Windows and FTP
+        const defaultPath = (server.type === 'windows' || server.type === 'ftp') ? '/' : '/root';
+        setCurrentPath(defaultPath);
+    }, [server.id, server.type]);
 
-    useEffect(() => {
-        if (isVisible && socket) {
-            socket.emit('sftp-list', currentPathRef.current);
-        }
-    }, [isVisible, socket]);
+
 
     const formatSize = (bytes: number) => {
         if (bytes === 0) return '0 B';
@@ -48,6 +47,7 @@ export default function FileExplorer({ server, isVisible }: FileExplorerProps) {
     };
 
     useEffect(() => {
+        setIsConnectionReady(false);
         const newSocket = io('http://localhost:3001', { transports: ['websocket'] });
         setSocket(newSocket);
 
@@ -66,6 +66,13 @@ export default function FileExplorer({ server, isVisible }: FileExplorerProps) {
         });
 
         newSocket.on('ssh-output', () => { });
+
+        newSocket.on('connection-ready', () => {
+            console.log("Connection ready received");
+            setIsConnectionReady(true);
+            newSocket.emit('sftp-list', currentPathRef.current);
+            setIsLoading(true);
+        });
 
         newSocket.on('sftp-files', ({ path, files }: { path: string, files: FileItem[] }) => {
             setFiles(files);
@@ -89,17 +96,18 @@ export default function FileExplorer({ server, isVisible }: FileExplorerProps) {
             newSocket.emit('sftp-list', currentPathRef.current);
         });
 
-        if (isVisible) {
-            setTimeout(() => {
-                newSocket.emit('sftp-list', currentPathRef.current);
-                setIsLoading(true);
-            }, 500);
-        }
-
         return () => {
             newSocket.disconnect();
         };
     }, [server]);
+
+
+    useEffect(() => {
+        if (isVisible && socket && isConnectionReady) {
+            socket.emit('sftp-list', currentPathRef.current);
+            setIsLoading(true);
+        }
+    }, [isVisible, socket, isConnectionReady]);
 
     const handleNavigate = (path: string) => {
         if (!socket) return;
@@ -169,7 +177,7 @@ export default function FileExplorer({ server, isVisible }: FileExplorerProps) {
                 </button>
 
                 <div className="flex-1 flex items-center bg-black border border-zinc-800 rounded px-2 py-1 text-xs text-zinc-400 font-mono">
-                    <span className="mr-2 text-zinc-600">sftp://{server.ip}</span>
+                    <span className="mr-2 text-zinc-600">{(server.type === 'ftp' ? 'ftp' : 'sftp')}://{server.ip}</span>
                     <input
                         className="bg-transparent w-full outline-none text-zinc-200"
                         value={currentPath}

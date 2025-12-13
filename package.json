@@ -46,6 +46,7 @@
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
+    "basic-ftp": "^5.0.5",
     "clsx": "^2.1.0",
     "cors": "^2.8.5",
     "dotenv": "^17.2.3",

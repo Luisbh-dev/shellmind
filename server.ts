@@ -331,29 +331,68 @@ io.on("connection", (socket) => {
     console.log("Client connected", socket.id);
 
     let sshStream: any = null;
-    let sftp: any = null;
+    let sftp: any = null; // SSH2 SFTP Wrapper
+    let ftp: any = null;  // Basic-FTP Client
+    let connectionType: 'ssh' | 'ftp' = 'ssh';
+    let ftpInProgress = false;
+
     let conn: Client | null = null;
     let termRows = 24;
     let termCols = 80;
     let connectionError: string | null = null;
 
-    // --- SSH Handling ---
-    socket.on("start-ssh", (config) => {
-        connectionError = null; // Reset error on new attempt
-        console.log("Start SSH Config received:", {
+    // --- SSH / FTP Connection Handling ---
+    socket.on("start-ssh", async (config) => {
+        connectionError = null;
+        console.log("Start Connection Config received:", {
             host: config.host,
             user: config.username,
             type: config.type,
-            port: config.port,
-            passLength: config.password ? config.password.length : 0,
-            passFirstChar: config.password ? config.password[0] : 'null'
+            port: config.port
         });
 
         const host = config.host?.replace(/[\s\u00A0]+/g, '').trim();
         const username = config.username?.trim() || "root";
         const isWindows = config.type === 'windows';
-        const port = config.port || 22;
+        const port = config.port || (config.type === 'ftp' ? 21 : 22);
 
+        // Clean up previous connections
+        if (conn) { conn.end(); conn = null; }
+        if (ftp && !ftp.closed) { ftp.close(); ftp = null; }
+        sftp = null;
+
+        if (config.type === 'ftp') {
+            console.log("Switched connectionType to FTP");
+            connectionType = 'ftp';
+            const { Client: FtpClient } = require("basic-ftp");
+            ftp = new FtpClient();
+            ftp.ftp.verbose = true;
+
+            try {
+                console.log(`Attempting FTP connection to ${host}:${port}`);
+                await ftp.access({
+                    host: host,
+                    user: username,
+                    password: config.password,
+                    port: port,
+                    secure: false
+                });
+
+                console.log("FTP Connected successfully");
+                socket.emit("ssh-output", "\r\nConnected to FTP Server " + host + "\r\n");
+                socket.emit("ftp-ready");
+                socket.emit("connection-ready");
+
+            } catch (err: any) {
+                console.error("FTP Connection Error:", err);
+                connectionError = err.message;
+                socket.emit("ssh-error", "FTP Error: " + err.message);
+            }
+            return;
+        }
+
+        console.log("Proceeding with SSH connection (type was not ftp, was: " + config.type + ")");
+        connectionType = 'ssh';
         conn = new Client();
 
         conn.on("ready", () => {
@@ -366,6 +405,8 @@ io.on("connection", (socket) => {
                 } else {
                     sftp = sftpWrapper;
                     console.log("SFTP Session ready");
+                    // Only emit ready when SFTP is actually ready to avoid race condition
+                    socket.emit("connection-ready");
                 }
             });
 
@@ -435,8 +476,48 @@ io.on("connection", (socket) => {
         }
     });
 
-    // --- SFTP Listeners ---
-    socket.on("sftp-list", (path) => {
+    // --- File Operations Listeners (SFTP & FTP) ---
+    socket.on("sftp-list", async (path) => {
+        console.log(`[sftp-list] Request for ${path}. connectionType: ${connectionType}`);
+        if (connectionType === 'ftp') {
+            if (!ftp || ftp.closed) return socket.emit("sftp-error", "FTP not connected");
+
+            if (ftpInProgress) {
+                console.log("FTP operation in progress, skipping duplicate list request");
+                return;
+            }
+
+            try {
+                ftpInProgress = true;
+                const list = await ftp.list(path);
+                ftpInProgress = false;
+
+                const files = list.map((item: any) => ({
+                    name: item.name,
+                    isDir: item.type === 2, // basic-ftp: 1=file, 2=dir
+                    size: item.size,
+                    mtime: item.rawModifiedAt ? new Date(item.rawModifiedAt).getTime() / 1000 : 0,
+                    permissions: 0 // Not easily available in same format, ignore for now
+                }));
+
+                // Add ".." if not root and not in list (often FTP servers don't include it in listing if at root)
+                // Actually frontend handles navigation, we just send file list.
+
+                // Sort
+                files.sort((a: any, b: any) => {
+                    if (a.isDir === b.isDir) return a.name.localeCompare(b.name);
+                    return a.isDir ? -1 : 1;
+                });
+                socket.emit("sftp-files", { path, files });
+            } catch (err: any) {
+                ftpInProgress = false;
+                console.error("FTP List Error:", err.message);
+                socket.emit("sftp-error", "FTP List Error: " + err.message);
+            }
+            return;
+        }
+
+        // SFTP Logic
         if (!sftp) {
             const msg = connectionError ? `SFTP Error: ${connectionError}` : "Unable to establish file connection. Please ensure the server is reachable.";
             return socket.emit("sftp-error", msg);
@@ -459,7 +540,27 @@ io.on("connection", (socket) => {
         });
     });
 
-    socket.on("sftp-read", (path) => {
+    socket.on("sftp-read", async (path) => {
+        if (connectionType === 'ftp') {
+            if (!ftp || ftp.closed) return socket.emit("sftp-error", "FTP not initialized");
+            const { Writable } = require('stream');
+            const chunks: any[] = [];
+            const writable = new Writable({
+                write(chunk: any, encoding: any, callback: any) {
+                    chunks.push(chunk);
+                    callback();
+                }
+            });
+            try {
+                await ftp.downloadTo(writable, path);
+                const buffer = Buffer.concat(chunks);
+                socket.emit("sftp-file-content", { path, data: buffer.toString('base64') });
+            } catch (err: any) {
+                socket.emit("sftp-error", "FTP Read Error: " + err.message);
+            }
+            return;
+        }
+
         if (!sftp) return socket.emit("sftp-error", "SFTP not initialized");
         // Limit size for safety? For now, simple read.
         // Using fastRead stream or readFile
@@ -470,20 +571,54 @@ io.on("connection", (socket) => {
         });
     });
 
-    socket.on("sftp-write", ({ path, data }) => { // data is base64
+    socket.on("sftp-write", async ({ path, data }) => { // data is base64
+        const buffer = Buffer.from(data, 'base64');
+
+        if (connectionType === 'ftp') {
+            if (!ftp || ftp.closed) return socket.emit("sftp-error", "FTP not initialized");
+            const { Readable } = require('stream');
+            const source = new Readable();
+            source.push(buffer);
+            source.push(null);
+
+            try {
+                await ftp.uploadFrom(source, path);
+                socket.emit("sftp-write-success", path);
+            } catch (err: any) {
+                socket.emit("sftp-error", "FTP Write Error: " + err.message);
+            }
+            return;
+        }
+
         if (!sftp) {
             const msg = connectionError ? `SFTP Error: ${connectionError}` : "Unable to establish file connection. Please ensure the server is reachable.";
             return socket.emit("sftp-error", msg);
         }
-        const buffer = Buffer.from(data, 'base64');
+
         sftp.writeFile(path, buffer, (err: any) => {
             if (err) return socket.emit("sftp-error", "Write error: " + err.message);
             socket.emit("sftp-write-success", path);
         });
     });
 
-    socket.on("sftp-delete", ({ path, isDir }) => {
-        console.log(`[SFTP] Delete request for ${path} (isDir: ${isDir})`);
+    socket.on("sftp-delete", async ({ path, isDir }) => {
+        console.log(`[Delete] Request for ${path} (isDir: ${isDir}) via ${connectionType}`);
+
+        if (connectionType === 'ftp') {
+            if (!ftp || ftp.closed) return socket.emit("sftp-error", "FTP not initialized");
+            try {
+                if (isDir) {
+                    await ftp.removeDir(path);
+                } else {
+                    await ftp.remove(path);
+                }
+                socket.emit("sftp-delete-success", path);
+            } catch (err: any) {
+                socket.emit("sftp-error", "FTP Delete Error: " + err.message);
+            }
+            return;
+        }
+
         if (!sftp) {
             console.error("[SFTP] Error: SFTP not initialized during delete request");
             const msg = connectionError ? `SFTP Error: ${connectionError}` : "Unable to establish file connection. Please ensure the server is reachable.";
@@ -527,6 +662,7 @@ io.on("connection", (socket) => {
 
     socket.on("disconnect", () => {
         if (conn) conn.end();
+        if (ftp) ftp.close();
     });
 });
 
