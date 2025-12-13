@@ -326,6 +326,24 @@ app.post("/api/chat", async (req: any, res: any) => {
     }
 });
 
+// Helper to normalize FTP paths (especially for Windows servers)
+function normalizeFtpPath(path: string): string {
+    let ftpPath = path;
+
+    // Remove all quotes (defensive against malformed inputs from AI or frontend)
+    ftpPath = ftpPath.replace(/"/g, '');
+
+    // Convert backslashes to forward slashes (FTP standard)
+    ftpPath = ftpPath.replace(/\\/g, '/');
+
+    // Handle "/C:/" pattern -> "C:/" (Absolute Windows paths via standard client)
+    if (/^\/[a-zA-Z]:/.test(ftpPath)) {
+        ftpPath = ftpPath.substring(1);
+    }
+
+    return ftpPath;
+}
+
 // Socket.io Handling
 io.on("connection", (socket) => {
     console.log("Client connected", socket.id);
@@ -489,7 +507,7 @@ io.on("connection", (socket) => {
 
             try {
                 ftpInProgress = true;
-                const list = await ftp.list(path);
+                const list = await ftp.list(normalizeFtpPath(path));
                 ftpInProgress = false;
 
                 const files = list.map((item: any) => ({
@@ -552,7 +570,7 @@ io.on("connection", (socket) => {
                 }
             });
             try {
-                await ftp.downloadTo(writable, path);
+                await ftp.downloadTo(writable, normalizeFtpPath(path));
                 const buffer = Buffer.concat(chunks);
                 socket.emit("sftp-file-content", { path, data: buffer.toString('base64') });
             } catch (err: any) {
@@ -582,7 +600,7 @@ io.on("connection", (socket) => {
             source.push(null);
 
             try {
-                await ftp.uploadFrom(source, path);
+                await ftp.uploadFrom(source, normalizeFtpPath(path));
                 socket.emit("sftp-write-success", path);
             } catch (err: any) {
                 socket.emit("sftp-error", "FTP Write Error: " + err.message);
@@ -606,11 +624,17 @@ io.on("connection", (socket) => {
 
         if (connectionType === 'ftp') {
             if (!ftp || ftp.closed) return socket.emit("sftp-error", "FTP not initialized");
+
+            // Normalize path for FTP using helper
+            const ftpPath = normalizeFtpPath(path);
+
+            console.log(`[FTP Delete] Normalized path: '${ftpPath}' (Original: '${path}')`);
+
             try {
                 if (isDir) {
-                    await ftp.removeDir(path);
+                    await ftp.removeDir(ftpPath);
                 } else {
-                    await ftp.remove(path);
+                    await ftp.remove(ftpPath);
                 }
                 socket.emit("sftp-delete-success", path);
             } catch (err: any) {
@@ -646,7 +670,131 @@ io.on("connection", (socket) => {
         }
     });
 
-    socket.on("ssh-input", (data) => {
+    // Virtual Shell Buffer for FTP
+    let ftpCommandBuffer = "";
+    let currentFtpPath = "/";
+
+    socket.on("ssh-input", async (data: string) => {
+        if (connectionType === 'ftp') {
+            // Echo back to terminal (pasting or typing)
+            socket.emit("ssh-output", data);
+
+            // Handle backspace (simple implementation)
+            if (data === '\u007F') {
+                if (ftpCommandBuffer.length > 0) {
+                    ftpCommandBuffer = ftpCommandBuffer.slice(0, -1);
+                    // Send backspace sequence to terminal to visually delete char
+                    socket.emit("ssh-output", "\b \b");
+                }
+                return;
+            }
+
+            // Buffer processing
+            // Accumulate buffer first
+            // Replace \r with \n for consistency
+            ftpCommandBuffer += data.replace(/\r/g, '\n');
+
+            // Process lines if newline exists
+            if (ftpCommandBuffer.includes('\n')) {
+                const lines = ftpCommandBuffer.split('\n');
+                // The last element is potentially an incomplete line, keep it in buffer
+                const remaining = lines.pop() || "";
+
+                // Process only complete lines
+                for (let line of lines) {
+                    const commandLine = line.trim();
+
+                    socket.emit("ssh-output", "\r\n"); // Visual output for newline
+
+                    if (!commandLine) {
+                        socket.emit("ssh-output", "ftp> ");
+                        continue;
+                    }
+
+                    const args = commandLine.split(" ");
+                    const cmd = args[0].toLowerCase();
+                    const arg1 = args[1];
+
+                    try {
+                        if (!ftp || ftp.closed) throw new Error("FTP connection lost");
+
+                        if (cmd === 'ls' || cmd === 'dir' || cmd === 'll') {
+                            const list = await ftp.list(normalizeFtpPath(currentFtpPath)); // Normalize
+                            const output = list.map((f: any) => {
+                                const date = new Date(f.modifiedAt || Date.now()).toISOString().split('T')[0];
+                                const type = f.isDirectory ? 'd' : '-';
+                                return `${type}rw-r--r-- 1 ftp ftp ${f.size.toString().padEnd(10)} ${date} ${f.name}`;
+                            }).join('\r\n');
+                            socket.emit("ssh-output", output + "\r\n");
+                        }
+                        else if (cmd === 'cd') {
+                            const target = arg1 || "/";
+                            if (target === "..") {
+                                const parts = currentFtpPath.split('/').filter(p => p);
+                                parts.pop();
+                                currentFtpPath = "/" + parts.join('/');
+                            } else if (target.startsWith('/')) {
+                                currentFtpPath = target;
+                            } else {
+                                currentFtpPath = (currentFtpPath === '/' ? '' : currentFtpPath) + "/" + target;
+                            }
+                            // Normalize current path state
+                            currentFtpPath = normalizeFtpPath(currentFtpPath);
+                            // If root became empty/missing due to normalization, explicit /
+                            if (!currentFtpPath) currentFtpPath = "/";
+
+                            await ftp.cd(currentFtpPath);
+                            socket.emit("ssh-output", `Changed directory to ${currentFtpPath}\r\n`);
+                        }
+                        else if (cmd === 'pwd') {
+                            socket.emit("ssh-output", currentFtpPath + "\r\n");
+                        }
+                        else if (cmd === 'mkdir') {
+                            if (!arg1) throw new Error("Usage: mkdir <path>");
+                            const fullPath = (currentFtpPath === '/' ? '' : currentFtpPath) + "/" + arg1;
+                            await ftp.ensureDir(normalizeFtpPath(fullPath));
+                            socket.emit("ssh-output", `Created directory ${arg1}\r\n`);
+                        }
+                        else if (cmd === 'rm') {
+                            if (!arg1) throw new Error("Usage: rm <path>");
+                            const fullPath = (currentFtpPath === '/' ? '' : currentFtpPath) + "/" + arg1;
+                            await ftp.remove(normalizeFtpPath(fullPath));
+                            socket.emit("ssh-output", `Removed ${fullPath}\r\n`);
+                        }
+                        else if (cmd === 'cat') {
+                            if (!arg1) throw new Error("Usage: cat <path>");
+                            const fullPath = (currentFtpPath === '/' ? '' : currentFtpPath) + "/" + arg1;
+                            const { Writable } = require('stream');
+                            const chunks: any[] = [];
+                            const writable = new Writable({
+                                write(chunk: any, encoding: any, callback: any) {
+                                    chunks.push(chunk);
+                                    callback();
+                                }
+                            });
+                            await ftp.downloadTo(writable, normalizeFtpPath(fullPath));
+                            const content = Buffer.concat(chunks).toString('utf8');
+                            socket.emit("ssh-output", content + "\r\n");
+                        }
+                        else if (cmd === 'help') {
+                            socket.emit("ssh-output", "Supported commands: ls, dir, cd, pwd, mkdir, rm, cat\r\n");
+                        }
+                        else {
+                            socket.emit("ssh-output", `Command not found: ${cmd}\r\n`);
+                        }
+
+                    } catch (err: any) {
+                        socket.emit("ssh-output", `Error: ${err.message}\r\n`);
+                    }
+                    socket.emit("ssh-output", "ftp> ");
+                }
+
+                // Restore remaining buffer (incomplete line)
+                ftpCommandBuffer = remaining;
+            }
+            return;
+        }
+
         if (sshStream) {
             sshStream.write(data);
         }
