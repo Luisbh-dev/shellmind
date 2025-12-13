@@ -1,12 +1,12 @@
 # 🐚 ShellMind
 
-> **Version 0.1.1 Multi-Model Hotfix**
+> **Version 0.1.2 FTP Support Added**
 
 **Your AI-Powered System Administration Companion.**
 
 🌐 **Official Website:** [https://shellmind.app/](https://shellmind.app/)
 
-ShellMind is a robust, self-hosted server management dashboard that integrates **Generative AI** to help you manage, debug, and automate your infrastructure. It provides a unified interface for SSH (Linux), PowerShell (Windows), RDP, and SFTP access directly in your browser, with an agentic AI co-pilot that assists you in real-time.
+ShellMind is a robust, self-hosted server management dashboard that integrates **Generative AI** to help you manage, debug, and automate your infrastructure. It provides a unified interface for SSH (Linux), PowerShell (Windows), RDP, FTP, and SFTP access directly in your browser, with an agentic AI co-pilot that assists you in real-time.
 
 ## ✨ Key Features
 
@@ -23,7 +23,8 @@ ShellMind is a robust, self-hosted server management dashboard that integrates *
     -   **PowerShell**: Native terminal access wrapped for compatibility.
     -   **RDP**: Integrated Remote Desktop Protocol client in the browser (**Work in Progress**).
     -   **SFTP**: File management for Windows via OpenSSH.
--   **SFTP Explorer**: Integrated file manager to browse, upload, download, and delete files (supports both Linux & Windows).
+-   **FTP Support (New in v0.1.2)**: Connect to legacy FTP servers to manage files with a modern UI.
+-   **SFTP Explorer**: Integrated file manager to browse, upload, download, and delete files (supports Linux, Windows, and FTP).
 
 ### 📈 Real-Time Monitoring
 -   **System Dashboard**: Dedicated 'Status' tab.
