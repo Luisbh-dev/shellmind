@@ -12,7 +12,7 @@ ShellMind is a robust, self-hosted server management dashboard that integrates *
 
 ### 🧠 Multi-Model AI Core (Updated in v0.1.3)
 -   **Dynamic Model Switching**: Select your preferred intelligence level:
-    -   **Flash 3 (Smartest)**: Powered by the experimental Gemini 2.0 / 3.0 Flash Preview models for cutting-edge reasoning.
+    -   **Flash 3 (Smartest)**: Powered by the experimental Gemini 3.0 Flash Preview models for cutting-edge reasoning.
     -   **Flash 2.5 (Smart)**: The balanced, reliable standard.
     -   **Gemma 3 (Standard)**: For tasks requiring a different model architecture.
 -   **Persistent Preference**: Your selected model is now saved in the system settings and remembered across sessions.
