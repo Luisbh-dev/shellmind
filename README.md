@@ -1,6 +1,6 @@
 # 🐚 ShellMind
 
-> **Version 0.1.2 FTP Support Added**
+> **Version 0.1.3 Flash 3 Preview Support**
 
 **Your AI-Powered System Administration Companion.**
 
@@ -10,12 +10,16 @@ ShellMind is a robust, self-hosted server management dashboard that integrates *
 
 ## ✨ Key Features
 
-### 🧠 Multi-Model AI Core (New in v0.1.1)
--   **Dynamic Model Switching**: Choose between **Flash 2.5 (Smart)** and **Gemma 3 (Standard)** directly from the Chat UI.
--   **Smart Fallback**: If one model hits its rate limit, ShellMind automatically switches to the other to keep your workflow uninterrupted.
+### 🧠 Multi-Model AI Core (Updated in v0.1.3)
+-   **Dynamic Model Switching**: Select your preferred intelligence level:
+    -   **Flash 3 (Smartest)**: Powered by the experimental Gemini 2.0 / 3.0 Flash Preview models for cutting-edge reasoning.
+    -   **Flash 2.5 (Smart)**: The balanced, reliable standard.
+    -   **Gemma 3 (Standard)**: For tasks requiring a different model architecture.
+-   **Persistent Preference**: Your selected model is now saved in the system settings and remembered across sessions.
+-   **Smart Fallback**: Automatically switches models if rate limits are reached.
 -   **Context-Aware**: The AI reads your terminal output. If a command fails, it analyzes the error and suggests fixes immediately.
 -   **Auto-Run Agent**: Enable "Auto-Run" mode to let the AI execute commands, analyze the output, and self-correct until the task is done (requires user confirmation).
--   **Language Persistence**: The AI detects your language (e.g., Spanish) and maintains the conversation in that language, even when analyzing technical English outputs.
+-   **Language Persistence**: The AI detects your language (e.g., Spanish) and maintains the conversation in that language.
 
 ### 🖥️ Multi-Protocol Connectivity
 -   **Smart Terminal**: Full-featured web terminal with WebGL acceleration. Supports **SSH** for Linux and **PowerShell** (via OpenSSH) for Windows.

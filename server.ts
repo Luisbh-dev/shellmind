@@ -159,6 +159,24 @@ app.post("/api/config/apikey", (req, res) => {
     });
 });
 
+// Get Preferred Model
+app.get("/api/config/model", (req, res) => {
+    db.get("SELECT value FROM settings WHERE key = 'PREFERRED_MODEL'", [], (err, row: any) => {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json({ model: row ? row.value : "gemini-2.5-flash" });
+    });
+});
+
+// Set Preferred Model
+app.post("/api/config/model", (req, res) => {
+    const { model } = req.body;
+    if (!model) return res.status(400).json({ error: "Model is required" });
+    db.run("INSERT OR REPLACE INTO settings (key, value) VALUES ('PREFERRED_MODEL', ?)", [model], (err) => {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json({ message: "success" });
+    });
+});
+
 // Chat API Route
 app.post("/api/chat", async (req: any, res: any) => {
     try {
