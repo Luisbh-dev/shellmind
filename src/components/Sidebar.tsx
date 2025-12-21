@@ -44,6 +44,10 @@ export default function Sidebar({ servers, onSelectServer, activeServerId, onAdd
             return <Folder className="w-3.5 h-3.5 text-yellow-500" />;
         }
 
+        if (server.type === 's3') {
+            return <div className="w-3.5 h-3.5 flex items-center justify-center font-bold text-[8px] border border-blue-500 rounded text-blue-500">S3</div>;
+        }
+
         if (os.includes('ubuntu')) return <Codepen className="w-3.5 h-3.5 text-orange-500" />;
         if (os.includes('debian')) return <Disc className="w-3.5 h-3.5 text-red-500" />;
         if (os.includes('centos') || os.includes('fedora') || os.includes('red hat')) return <Box className="w-3.5 h-3.5 text-blue-500" />;
@@ -58,6 +62,7 @@ export default function Sidebar({ servers, onSelectServer, activeServerId, onAdd
         if (lower.includes('centos')) return "bg-purple-900/30 text-purple-300 border-purple-800/50";
         if (lower.includes('windows')) return "bg-blue-900/30 text-blue-300 border-blue-800/50";
         if (lower.includes('ftp')) return "bg-yellow-900/30 text-yellow-300 border-yellow-800/50";
+        if (lower.includes('s3')) return "bg-blue-900/30 text-blue-400 border-blue-800/50";
         return "bg-zinc-800 text-zinc-400 border-zinc-700";
     };
 
@@ -114,12 +119,12 @@ export default function Sidebar({ servers, onSelectServer, activeServerId, onAdd
                                 <div className="flex flex-col min-w-0 flex-1 gap-1">
                                     <div className="flex items-center gap-2 w-full">
                                         <span className="text-xs font-medium truncate text-zinc-200">{server.name}</span>
-                                        {(server.os_detail || server.type === 'ftp') && (
+                                        {(server.os_detail || server.type === 'ftp' || server.type === 's3') && (
                                             <span className={clsx(
                                                 "px-1.5 py-[1px] rounded-md text-[9px] font-bold border shadow-sm shrink-0 uppercase tracking-wide",
-                                                getOsBadgeColor(server.os_detail || (server.type === 'ftp' ? 'ftp' : ''))
+                                                getOsBadgeColor(server.os_detail || (server.type === 'ftp' ? 'ftp' : (server.type === 's3' ? 's3' : '')))
                                             )}>
-                                                {server.type === 'ftp' ? 'FTP' : (server.os_detail?.split(' ')[0])}
+                                                {server.type === 'ftp' ? 'FTP' : (server.type === 's3' ? 'S3' : server.os_detail?.split(' ')[0])}
                                             </span>
                                         )}
                                     </div>

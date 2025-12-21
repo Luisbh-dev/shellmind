@@ -3,6 +3,7 @@ import { createServer } from "http";
 import { Server } from "socket.io";
 import { Client } from "ssh2";
 import { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold } from "@google/generative-ai";
+import { S3Client, ListObjectsV2Command, GetObjectCommand, PutObjectCommand, DeleteObjectCommand, DeleteObjectsCommand } from "@aws-sdk/client-s3";
 import cors from "cors";
 import dotenv from "dotenv";
 import db from "./database";
@@ -45,8 +46,8 @@ app.get("/api/servers", (req, res) => {
 app.post("/api/servers", (req, res) => {
     console.log("POST /api/servers received body:", req.body);
     try {
-        const { name, ip, type, username, password, port, ssh_port } = req.body;
-        const sql = "INSERT INTO servers (name, ip, type, username, password, port, ssh_port) VALUES (?,?,?,?,?,?,?)";
+        const { name, ip, type, username, password, port, ssh_port, s3_provider, s3_bucket, s3_region, s3_endpoint, s3_access_key, s3_secret_key } = req.body;
+        const sql = "INSERT INTO servers (name, ip, type, username, password, port, ssh_port, s3_provider, s3_bucket, s3_region, s3_endpoint, s3_access_key, s3_secret_key) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)";
         // For Linux: port is SSH. For Windows: port is RDP, ssh_port is SSH.
         const params = [
             name,
@@ -55,7 +56,13 @@ app.post("/api/servers", (req, res) => {
             username,
             password,
             port || (type === 'windows' ? 3389 : 22),
-            ssh_port || 22
+            ssh_port || 22,
+            s3_provider,
+            s3_bucket,
+            s3_region,
+            s3_endpoint,
+            s3_access_key,
+            s3_secret_key
         ];
 
         console.log("Executing SQL:", sql, "Params:", params);
@@ -81,8 +88,8 @@ app.post("/api/servers", (req, res) => {
 // Update an existing server
 app.put("/api/servers/:id", (req, res) => {
     console.log("PUT /api/servers/" + req.params.id, req.body);
-    const { name, ip, type, username, password, port, os_detail, ssh_port } = req.body;
-    const sql = "UPDATE servers SET name = ?, ip = ?, type = ?, username = ?, password = ?, port = ?, os_detail = ?, ssh_port = ? WHERE id = ?";
+    const { name, ip, type, username, password, port, os_detail, ssh_port, s3_provider, s3_bucket, s3_region, s3_endpoint, s3_access_key, s3_secret_key } = req.body;
+    const sql = "UPDATE servers SET name = ?, ip = ?, type = ?, username = ?, password = ?, port = ?, os_detail = ?, ssh_port = ?, s3_provider = ?, s3_bucket = ?, s3_region = ?, s3_endpoint = ?, s3_access_key = ?, s3_secret_key = ? WHERE id = ?";
     const params = [
         name,
         ip,
@@ -92,6 +99,12 @@ app.put("/api/servers/:id", (req, res) => {
         port || (type === 'windows' ? 3389 : 22),
         os_detail,
         ssh_port || 22,
+        s3_provider,
+        s3_bucket,
+        s3_region,
+        s3_endpoint,
+        s3_access_key,
+        s3_secret_key,
         req.params.id
     ];
 
@@ -369,7 +382,9 @@ io.on("connection", (socket) => {
     let sshStream: any = null;
     let sftp: any = null; // SSH2 SFTP Wrapper
     let ftp: any = null;  // Basic-FTP Client
-    let connectionType: 'ssh' | 'ftp' = 'ssh';
+    let s3Client: S3Client | null = null;
+    let s3Bucket: string = "";
+    let connectionType: 'ssh' | 'ftp' | 's3' = 'ssh';
     let ftpInProgress = false;
 
     let conn: Client | null = null;
@@ -396,6 +411,47 @@ io.on("connection", (socket) => {
         if (conn) { conn.end(); conn = null; }
         if (ftp && !ftp.closed) { ftp.close(); ftp = null; }
         sftp = null;
+        s3Client = null;
+
+        if (config.type === 's3') {
+            console.log("Switched connectionType to S3");
+            connectionType = 's3';
+            s3Bucket = config.s3_bucket;
+
+            try {
+                const s3Config: any = {
+                    region: config.s3_region || "us-east-1",
+                    credentials: {
+                        accessKeyId: config.s3_access_key,
+                        secretAccessKey: config.s3_secret_key
+                    }
+                };
+
+                if (config.s3_provider === 'other' && config.s3_endpoint) {
+                    let endpoint = config.s3_endpoint.trim();
+                    // Ensure protocol is present
+                    if (!endpoint.startsWith('http://') && !endpoint.startsWith('https://')) {
+                        endpoint = 'https://' + endpoint;
+                    }
+                    s3Config.endpoint = endpoint;
+                    s3Config.forcePathStyle = true; // Often needed for MinIO/others
+                }
+
+                console.log("S3 Config used:", JSON.stringify({ ...s3Config, credentials: { accessKeyId: '***', secretAccessKey: '***' } })); // Debug log
+                s3Client = new S3Client(s3Config);
+
+                // Test connection by listing 1 object? 
+                // We'll just assume ready and let list fail if bad.
+                console.log("S3 Client Initialized");
+                socket.emit("ssh-output", `\r\nConnected to S3 Bucket: ${s3Bucket}\r\n`);
+                socket.emit("connection-ready");
+
+            } catch (err: any) {
+                console.error("S3 Init Error:", err);
+                socket.emit("ssh-error", "S3 Error: " + err.message);
+            }
+            return;
+        }
 
         if (config.type === 'ftp') {
             console.log("Switched connectionType to FTP");
@@ -515,6 +571,79 @@ io.on("connection", (socket) => {
     // --- File Operations Listeners (SFTP & FTP) ---
     socket.on("sftp-list", async (path) => {
         console.log(`[sftp-list] Request for ${path}. connectionType: ${connectionType}`);
+        if (connectionType === 's3') {
+            if (!s3Client) return socket.emit("sftp-error", "S3 not initialized");
+
+            try {
+                // Determine prefix from path.
+                // If path is "/" or "", prefix is empty. 
+                // If path is "/folder", prefix is "folder/"
+                let prefix = path;
+                if (prefix.startsWith('/')) prefix = prefix.substring(1);
+                if (prefix && !prefix.endsWith('/')) prefix += '/';
+                if (prefix === '/') prefix = ''; // Root
+
+                console.log(`[S3 List] Bucket: ${s3Bucket}, Prefix: '${prefix}'`);
+
+                const command = new ListObjectsV2Command({
+                    Bucket: s3Bucket,
+                    Prefix: prefix,
+                    Delimiter: '/'
+                });
+
+                const response = await s3Client.send(command);
+
+                const files: any[] = [];
+
+                // CommonPrefixes are directories
+                if (response.CommonPrefixes) {
+                    response.CommonPrefixes.forEach((p) => {
+                        const name = p.Prefix?.split('/').filter(x => x).pop();
+                        if (name) {
+                            files.push({
+                                name: name,
+                                isDir: true,
+                                size: 0,
+                                mtime: 0,
+                                permissions: 0
+                            });
+                        }
+                    });
+                }
+
+                // Contents are files
+                if (response.Contents) {
+                    response.Contents.forEach((c) => {
+                        // Skip the folder object itself if it exists (key ending in / equal to prefix)
+                        if (c.Key === prefix) return;
+
+                        const name = c.Key?.split('/').pop();
+                        if (name) {
+                            files.push({
+                                name: name,
+                                isDir: false,
+                                size: c.Size || 0,
+                                mtime: c.LastModified ? new Date(c.LastModified).getTime() / 1000 : 0,
+                                permissions: 0
+                            });
+                        }
+                    });
+                }
+
+                files.sort((a: any, b: any) => {
+                    if (a.isDir === b.isDir) return a.name.localeCompare(b.name);
+                    return a.isDir ? -1 : 1;
+                });
+
+                socket.emit("sftp-files", { path, files });
+
+            } catch (err: any) {
+                console.error("S3 List Error:", err);
+                socket.emit("sftp-error", "S3 List Error: " + err.message);
+            }
+            return;
+        }
+
         if (connectionType === 'ftp') {
             if (!ftp || ftp.closed) return socket.emit("sftp-error", "FTP not connected");
 
@@ -577,6 +706,35 @@ io.on("connection", (socket) => {
     });
 
     socket.on("sftp-read", async (path) => {
+        if (connectionType === 's3') {
+            if (!s3Client) return socket.emit("sftp-error", "S3 not initialized");
+
+            try {
+                let key = path;
+                if (key.startsWith('/')) key = key.substring(1);
+
+                console.log(`[S3 Read] Bucket: ${s3Bucket}, Key: '${key}'`);
+
+                const command = new GetObjectCommand({
+                    Bucket: s3Bucket,
+                    Key: key
+                });
+
+                const response = await s3Client.send(command);
+                const str = await response.Body?.transformToString("base64");
+
+                if (str) {
+                    socket.emit("sftp-file-content", { path, data: str });
+                } else {
+                    throw new Error("Empty body");
+                }
+            } catch (err: any) {
+                console.error("S3 Read Error:", err);
+                socket.emit("sftp-error", "S3 Read Error: " + err.message);
+            }
+            return;
+        }
+
         if (connectionType === 'ftp') {
             if (!ftp || ftp.closed) return socket.emit("sftp-error", "FTP not initialized");
             const { Writable } = require('stream');
@@ -610,6 +768,30 @@ io.on("connection", (socket) => {
     socket.on("sftp-write", async ({ path, data }) => { // data is base64
         const buffer = Buffer.from(data, 'base64');
 
+        if (connectionType === 's3') {
+            if (!s3Client) return socket.emit("sftp-error", "S3 not initialized");
+
+            try {
+                let key = path;
+                if (key.startsWith('/')) key = key.substring(1);
+
+                console.log(`[S3 Write] Bucket: ${s3Bucket}, Key: '${key}'`);
+
+                const command = new PutObjectCommand({
+                    Bucket: s3Bucket,
+                    Key: key,
+                    Body: buffer
+                });
+
+                await s3Client.send(command);
+                socket.emit("sftp-write-success", path);
+            } catch (err: any) {
+                console.error("S3 Write Error:", err);
+                socket.emit("sftp-error", "S3 Write Error: " + err.message);
+            }
+            return;
+        }
+
         if (connectionType === 'ftp') {
             if (!ftp || ftp.closed) return socket.emit("sftp-error", "FTP not initialized");
             const { Readable } = require('stream');
@@ -639,6 +821,56 @@ io.on("connection", (socket) => {
 
     socket.on("sftp-delete", async ({ path, isDir }) => {
         console.log(`[Delete] Request for ${path} (isDir: ${isDir}) via ${connectionType}`);
+
+        if (connectionType === 's3') {
+            if (!s3Client) return socket.emit("sftp-error", "S3 not initialized");
+
+            try {
+                let key = path;
+                if (key.startsWith('/')) key = key.substring(1);
+
+                console.log(`[S3 Delete] Bucket: ${s3Bucket}, Key: '${key}', IsDir: ${isDir}`);
+
+                if (isDir) {
+                    // For 'folders', we must delete everything with that prefix
+                    if (!key.endsWith('/')) key += '/';
+
+                    // List all objects with prefix
+                    const listCmd = new ListObjectsV2Command({
+                        Bucket: s3Bucket,
+                        Prefix: key
+                    });
+
+                    const listRes = await s3Client.send(listCmd);
+
+                    if (listRes.Contents && listRes.Contents.length > 0) {
+                        const objectsToDelete = listRes.Contents.map(obj => ({ Key: obj.Key }));
+
+                        const deleteCmd = new DeleteObjectsCommand({
+                            Bucket: s3Bucket,
+                            Delete: { Objects: objectsToDelete }
+                        });
+
+                        await s3Client.send(deleteCmd);
+                    }
+                    // Also delete the folder marker if it exists? (sometimes folders are 0-byte objects)
+                    // The scan above covers it if it matches prefix.
+
+                } else {
+                    const command = new DeleteObjectCommand({
+                        Bucket: s3Bucket,
+                        Key: key
+                    });
+                    await s3Client.send(command);
+                }
+
+                socket.emit("sftp-delete-success", path);
+            } catch (err: any) {
+                console.error("S3 Delete Error:", err);
+                socket.emit("sftp-error", "S3 Delete Error: " + err.message);
+            }
+            return;
+        }
 
         if (connectionType === 'ftp') {
             if (!ftp || ftp.closed) return socket.emit("sftp-error", "FTP not initialized");

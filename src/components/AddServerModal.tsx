@@ -16,9 +16,15 @@ export default function AddServerModal({ isOpen, onClose, onAdd, initialData }: 
         username: '',
         password: '',
         port: '',
-        ssh_port: ''
+        ssh_port: '',
+        s3_provider: 'aws',
+        s3_bucket: '',
+        s3_region: 'us-east-1',
+        s3_endpoint: '',
+        s3_access_key: '',
+        s3_secret_key: ''
     });
-    const [type, setType] = useState<'linux' | 'windows' | 'ftp'>('linux');
+    const [type, setType] = useState<'linux' | 'windows' | 'ftp' | 's3'>('linux');
     const [isLoading, setIsLoading] = useState(false);
 
     // Load initial data when modal opens or initialData changes
@@ -30,12 +36,21 @@ export default function AddServerModal({ isOpen, onClose, onAdd, initialData }: 
                 username: initialData.username || '',
                 password: initialData.password || '',
                 port: initialData.port ? initialData.port.toString() : '',
-                ssh_port: initialData.ssh_port ? initialData.ssh_port.toString() : ''
+                ssh_port: initialData.ssh_port ? initialData.ssh_port.toString() : '',
+                s3_provider: initialData.s3_provider || 'aws',
+                s3_bucket: initialData.s3_bucket || '',
+                s3_region: initialData.s3_region || 'us-east-1',
+                s3_endpoint: initialData.s3_endpoint || '',
+                s3_access_key: initialData.s3_access_key || '',
+                s3_secret_key: initialData.s3_secret_key || ''
             });
             setType(initialData.type || 'linux');
         } else {
             // Reset form if adding new
-            setFormData({ name: '', ip: '', username: '', password: '', port: '', ssh_port: '' });
+            setFormData({
+                name: '', ip: '', username: '', password: '', port: '', ssh_port: '',
+                s3_provider: 'aws', s3_bucket: '', s3_region: 'us-east-1', s3_endpoint: '', s3_access_key: '', s3_secret_key: ''
+            });
             setType('linux');
         }
     }, [initialData, isOpen]);
@@ -57,7 +72,13 @@ export default function AddServerModal({ isOpen, onClose, onAdd, initialData }: 
                 ...formData,
                 type,
                 port: formData.port ? parseInt(formData.port) : undefined,
-                ssh_port: formData.ssh_port ? parseInt(formData.ssh_port) : undefined
+                ssh_port: formData.ssh_port ? parseInt(formData.ssh_port) : undefined,
+                s3_provider: type === 's3' ? formData.s3_provider : undefined,
+                s3_bucket: type === 's3' ? formData.s3_bucket : undefined,
+                s3_region: type === 's3' ? formData.s3_region : undefined,
+                s3_endpoint: type === 's3' ? formData.s3_endpoint : undefined,
+                s3_access_key: type === 's3' ? formData.s3_access_key : undefined,
+                s3_secret_key: type === 's3' ? formData.s3_secret_key : undefined
             };
 
             const res = await fetch(url, {
@@ -70,7 +91,10 @@ export default function AddServerModal({ isOpen, onClose, onAdd, initialData }: 
                 onAdd(); // Refresh list
                 onClose();
                 if (!initialData) {
-                    setFormData({ name: '', ip: '', username: '', password: '', port: '', ssh_port: '' });
+                    setFormData({
+                        name: '', ip: '', username: '', password: '', port: '', ssh_port: '',
+                        s3_provider: 'aws', s3_bucket: '', s3_region: 'us-east-1', s3_endpoint: '', s3_access_key: '', s3_secret_key: ''
+                    });
                 }
             } else {
                 console.error("Failed to save server");
@@ -98,7 +122,7 @@ export default function AddServerModal({ isOpen, onClose, onAdd, initialData }: 
                 <form onSubmit={handleSubmit} className="p-4 space-y-4">
 
                     {/* Type Selector */}
-                    <div className="grid grid-cols-3 gap-2 mb-4">
+                    <div className="grid grid-cols-4 gap-2 mb-4">
                         <button
                             type="button"
                             onClick={() => setType('linux')}
@@ -138,88 +162,194 @@ export default function AddServerModal({ isOpen, onClose, onAdd, initialData }: 
                             <Folder className="w-5 h-5" />
                             <span className="text-xs font-medium">FTP</span>
                         </button>
+                        <button
+                            type="button"
+                            onClick={() => setType('s3')}
+                            className={clsx(
+                                "flex flex-col items-center justify-center gap-2 p-3 rounded border transition-all",
+                                type === 's3'
+                                    ? "bg-blue-900/20 border-blue-800 text-blue-400"
+                                    : "bg-zinc-900 border-zinc-800 text-zinc-500 hover:border-zinc-700 hover:text-zinc-300"
+                            )}
+                        >
+                            <span className="text-lg font-bold">S3</span>
+                            <span className="text-xs font-medium">Storage</span>
+                        </button>
                     </div>
 
-                    <div className="space-y-3">
-                        <div>
-                            <label className="block text-[10px] uppercase text-zinc-500 font-bold mb-1">Display Name</label>
-                            <input
-                                required
-                                type="text"
-                                value={formData.name}
-                                onChange={e => setFormData({ ...formData, name: e.target.value })}
-                                className="w-full bg-black border border-zinc-800 text-zinc-200 text-sm px-3 py-2 rounded focus:border-blue-600 focus:outline-none"
-                                placeholder="e.g. Production DB"
-                            />
-                        </div>
-
-                        <div className="grid grid-cols-3 gap-3">
-                            <div className="col-span-2">
-                                <label className="block text-[10px] uppercase text-zinc-500 font-bold mb-1">Host / IP</label>
+                    {type !== 's3' && (
+                        <div className="space-y-3">
+                            <div>
+                                <label className="block text-[10px] uppercase text-zinc-500 font-bold mb-1">Display Name</label>
                                 <input
                                     required
                                     type="text"
-                                    value={formData.ip}
-                                    onChange={e => setFormData({ ...formData, ip: e.target.value })}
+                                    value={formData.name}
+                                    onChange={e => setFormData({ ...formData, name: e.target.value })}
                                     className="w-full bg-black border border-zinc-800 text-zinc-200 text-sm px-3 py-2 rounded focus:border-blue-600 focus:outline-none"
-                                    placeholder="192.168.1.10"
+                                    placeholder="e.g. Production DB"
                                 />
                             </div>
-                            <div>
-                                <label className="block text-[10px] uppercase text-zinc-500 font-bold mb-1">{type === 'windows' ? 'RDP Port' : (type === 'ftp' ? 'FTP Port' : 'SSH Port')}</label>
-                                <input
-                                    type="number"
-                                    value={formData.port}
-                                    onChange={e => setFormData({ ...formData, port: e.target.value })}
-                                    className="w-full bg-black border border-zinc-800 text-zinc-200 text-sm px-3 py-2 rounded focus:border-blue-600 focus:outline-none"
-                                    placeholder={type === 'linux' ? "22" : (type === 'ftp' ? "21" : "3389")}
-                                />
-                            </div>
-                        </div>
 
-                        {/* Windows Extra Port */}
-                        {type === 'windows' && (
                             <div className="grid grid-cols-3 gap-3">
-                                <div className="col-span-2 text-[10px] text-zinc-500 italic flex items-center">
-                                    (Requires OpenSSH Server on Windows)
+                                <div className="col-span-2">
+                                    <label className="block text-[10px] uppercase text-zinc-500 font-bold mb-1">Host / IP</label>
+                                    <input
+                                        required
+                                        type="text"
+                                        value={formData.ip}
+                                        onChange={e => setFormData({ ...formData, ip: e.target.value })}
+                                        className="w-full bg-black border border-zinc-800 text-zinc-200 text-sm px-3 py-2 rounded focus:border-blue-600 focus:outline-none"
+                                        placeholder="192.168.1.10"
+                                    />
                                 </div>
                                 <div>
-                                    <label className="block text-[10px] uppercase text-zinc-500 font-bold mb-1">OpenSSH Port</label>
+                                    <label className="block text-[10px] uppercase text-zinc-500 font-bold mb-1">{type === 'windows' ? 'RDP Port' : (type === 'ftp' ? 'FTP Port' : 'SSH Port')}</label>
                                     <input
                                         type="number"
-                                        value={formData.ssh_port}
-                                        onChange={e => setFormData({ ...formData, ssh_port: e.target.value })}
+                                        value={formData.port}
+                                        onChange={e => setFormData({ ...formData, port: e.target.value })}
                                         className="w-full bg-black border border-zinc-800 text-zinc-200 text-sm px-3 py-2 rounded focus:border-blue-600 focus:outline-none"
-                                        placeholder="22"
+                                        placeholder={type === 'linux' ? "22" : (type === 'ftp' ? "21" : "3389")}
                                     />
                                 </div>
                             </div>
-                        )}
 
-                        <div className="grid grid-cols-2 gap-3">
+                            {/* Windows Extra Port */}
+                            {type === 'windows' && (
+                                <div className="grid grid-cols-3 gap-3">
+                                    <div className="col-span-2 text-[10px] text-zinc-500 italic flex items-center">
+                                        (Requires OpenSSH Server on Windows)
+                                    </div>
+                                    <div>
+                                        <label className="block text-[10px] uppercase text-zinc-500 font-bold mb-1">OpenSSH Port</label>
+                                        <input
+                                            type="number"
+                                            value={formData.ssh_port}
+                                            onChange={e => setFormData({ ...formData, ssh_port: e.target.value })}
+                                            className="w-full bg-black border border-zinc-800 text-zinc-200 text-sm px-3 py-2 rounded focus:border-blue-600 focus:outline-none"
+                                            placeholder="22"
+                                        />
+                                    </div>
+                                </div>
+                            )}
+
+                            <div className="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label className="block text-[10px] uppercase text-zinc-500 font-bold mb-1">Username</label>
+                                    <input
+                                        required
+                                        type="text"
+                                        value={formData.username}
+                                        onChange={e => setFormData({ ...formData, username: e.target.value })}
+                                        className="w-full bg-black border border-zinc-800 text-zinc-200 text-sm px-3 py-2 rounded focus:border-blue-600 focus:outline-none"
+                                        placeholder="root"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-[10px] uppercase text-zinc-500 font-bold mb-1">Password</label>
+                                    <input
+                                        type="password"
+                                        value={formData.password}
+                                        onChange={e => setFormData({ ...formData, password: e.target.value })}
+                                        className="w-full bg-black border border-zinc-800 text-zinc-200 text-sm px-3 py-2 rounded focus:border-blue-600 focus:outline-none"
+                                        placeholder="••••••"
+                                    />
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {type === 's3' && (
+                        <div className="space-y-3">
                             <div>
-                                <label className="block text-[10px] uppercase text-zinc-500 font-bold mb-1">Username</label>
+                                <label className="block text-[10px] uppercase text-zinc-500 font-bold mb-1">Display Name</label>
                                 <input
                                     required
                                     type="text"
-                                    value={formData.username}
-                                    onChange={e => setFormData({ ...formData, username: e.target.value })}
+                                    value={formData.name}
+                                    onChange={e => setFormData({ ...formData, name: e.target.value })}
                                     className="w-full bg-black border border-zinc-800 text-zinc-200 text-sm px-3 py-2 rounded focus:border-blue-600 focus:outline-none"
-                                    placeholder="root"
+                                    placeholder="My S3 Bucket"
                                 />
                             </div>
-                            <div>
-                                <label className="block text-[10px] uppercase text-zinc-500 font-bold mb-1">Password</label>
-                                <input
-                                    type="password"
-                                    value={formData.password}
-                                    onChange={e => setFormData({ ...formData, password: e.target.value })}
-                                    className="w-full bg-black border border-zinc-800 text-zinc-200 text-sm px-3 py-2 rounded focus:border-blue-600 focus:outline-none"
-                                    placeholder="••••••"
-                                />
+
+                            <div className="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label className="block text-[10px] uppercase text-zinc-500 font-bold mb-1">Provider</label>
+                                    <select
+                                        value={formData.s3_provider}
+                                        onChange={e => setFormData({ ...formData, s3_provider: e.target.value })}
+                                        className="w-full bg-black border border-zinc-800 text-zinc-200 text-sm px-3 py-2 rounded focus:border-blue-600 focus:outline-none"
+                                    >
+                                        <option value="aws">AWS S3</option>
+                                        <option value="other">Other (MinIO, R2, etc)</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-[10px] uppercase text-zinc-500 font-bold mb-1">Bucket Name</label>
+                                    <input
+                                        required
+                                        type="text"
+                                        value={formData.s3_bucket}
+                                        onChange={e => setFormData({ ...formData, s3_bucket: e.target.value })}
+                                        className="w-full bg-black border border-zinc-800 text-zinc-200 text-sm px-3 py-2 rounded focus:border-blue-600 focus:outline-none"
+                                        placeholder="my-backups"
+                                    />
+                                </div>
+                            </div>
+
+                            {formData.s3_provider === 'aws' ? (
+                                <div>
+                                    <label className="block text-[10px] uppercase text-zinc-500 font-bold mb-1">Region</label>
+                                    <input
+                                        type="text"
+                                        value={formData.s3_region}
+                                        onChange={e => setFormData({ ...formData, s3_region: e.target.value })}
+                                        className="w-full bg-black border border-zinc-800 text-zinc-200 text-sm px-3 py-2 rounded focus:border-blue-600 focus:outline-none"
+                                        placeholder="us-east-1"
+                                    />
+                                </div>
+                            ) : (
+                                <div>
+                                    <label className="block text-[10px] uppercase text-zinc-500 font-bold mb-1">Endpoint URL</label>
+                                    <input
+                                        required
+                                        type="text"
+                                        value={formData.s3_endpoint}
+                                        onChange={e => setFormData({ ...formData, s3_endpoint: e.target.value })}
+                                        className="w-full bg-black border border-zinc-800 text-zinc-200 text-sm px-3 py-2 rounded focus:border-blue-600 focus:outline-none"
+                                        placeholder="https://s3.custom-provider.com"
+                                    />
+                                </div>
+                            )}
+
+                            <div className="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label className="block text-[10px] uppercase text-zinc-500 font-bold mb-1">Access Key</label>
+                                    <input
+                                        required
+                                        type="text"
+                                        value={formData.s3_access_key}
+                                        onChange={e => setFormData({ ...formData, s3_access_key: e.target.value })}
+                                        className="w-full bg-black border border-zinc-800 text-zinc-200 text-sm px-3 py-2 rounded focus:border-blue-600 focus:outline-none"
+                                        placeholder="AKIA..."
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-[10px] uppercase text-zinc-500 font-bold mb-1">Secret Key</label>
+                                    <input
+                                        required
+                                        type="password"
+                                        value={formData.s3_secret_key}
+                                        onChange={e => setFormData({ ...formData, s3_secret_key: e.target.value })}
+                                        className="w-full bg-black border border-zinc-800 text-zinc-200 text-sm px-3 py-2 rounded focus:border-blue-600 focus:outline-none"
+                                        placeholder="••••••"
+                                    />
+                                </div>
                             </div>
                         </div>
-                    </div>
+                    )}
 
                     <div className="pt-4 flex justify-end gap-2">
                         <button
@@ -239,7 +369,7 @@ export default function AddServerModal({ isOpen, onClose, onAdd, initialData }: 
                         </button>
                     </div>
                 </form>
-            </div>
-        </div>
+            </div >
+        </div >
     );
 }

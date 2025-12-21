@@ -1,6 +1,6 @@
 # 🐚 ShellMind
 
-> **Version 0.1.3 Flash 3 Preview Support**
+> **Version 0.1.4 Experimental S3 Support**
 
 **Your AI-Powered System Administration Companion.**
 
@@ -28,7 +28,8 @@ ShellMind is a robust, self-hosted server management dashboard that integrates *
     -   **RDP**: Integrated Remote Desktop Protocol client in the browser (**Work in Progress**).
     -   **SFTP**: File management for Windows via OpenSSH.
 -   **FTP Support (New in v0.1.2)**: Connect to legacy FTP servers to manage files with a modern UI.
--   **SFTP Explorer**: Integrated file manager to browse, upload, download, and delete files (supports Linux, Windows, and FTP).
+-   **S3 Storage (New in v0.1.4)**: View and manage files in AWS S3 and confirm S3-compatible buckets (MinIO, R2, etc).
+-   **SFTP Explorer**: Integrated file manager to browse, upload, download, and delete files (supports Linux, Windows, FTP, and S3).
 
 ### 📈 Real-Time Monitoring
 -   **System Dashboard**: Dedicated 'Status' tab.

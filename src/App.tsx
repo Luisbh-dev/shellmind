@@ -48,7 +48,7 @@ function App() {
     const handleSelectServer = (server: any) => {
         setActiveServer(server);
         terminalHistoryRef.current = '';
-        setActiveTab(server.type === 'ftp' ? 'sftp' : 'ssh');
+        setActiveTab((server.type === 'ftp' || server.type === 's3') ? 'sftp' : 'ssh');
     };
 
     const handleEditServer = (server: any) => {
@@ -124,16 +124,18 @@ function App() {
                         {/* Tab Switcher - Only visible when active */}
                         {activeServer && (
                             <div className="flex h-full mr-2">
-                                <button
-                                    onClick={() => setActiveTab('ssh')}
-                                    className={clsx(
-                                        "px-4 h-full text-xs font-medium flex items-center gap-2 transition-colors border-l border-zinc-800",
-                                        activeTab === 'ssh' ? "bg-zinc-800 text-zinc-100" : "text-zinc-500 hover:bg-zinc-900 hover:text-zinc-300"
-                                    )}
-                                >
-                                    <TerminalIcon className="w-3.5 h-3.5" />
-                                    {activeServer.type === 'ftp' ? "Terminal" : (isWindows ? "CMD / PowerShell" : "SSH")}
-                                </button>
+                                {activeServer.type !== 's3' && (
+                                    <button
+                                        onClick={() => setActiveTab('ssh')}
+                                        className={clsx(
+                                            "px-4 h-full text-xs font-medium flex items-center gap-2 transition-colors border-l border-zinc-800",
+                                            activeTab === 'ssh' ? "bg-zinc-800 text-zinc-100" : "text-zinc-500 hover:bg-zinc-900 hover:text-zinc-300"
+                                        )}
+                                    >
+                                        <TerminalIcon className="w-3.5 h-3.5" />
+                                        {activeServer.type === 'ftp' ? "Terminal" : (isWindows ? "CMD / PowerShell" : "SSH")}
+                                    </button>
+                                )}
 
                                 <button
                                     onClick={() => setActiveTab('sftp')}
@@ -146,7 +148,7 @@ function App() {
                                     Files
                                 </button>
 
-                                {activeServer.type !== 'ftp' && (
+                                {activeServer.type !== 'ftp' && activeServer.type !== 's3' && (
                                     <button
                                         onClick={() => setActiveTab('status')}
                                         className={clsx(

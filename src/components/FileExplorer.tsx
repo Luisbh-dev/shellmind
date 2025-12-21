@@ -18,7 +18,7 @@ interface FileExplorerProps {
 
 export default function FileExplorer({ server, isVisible }: FileExplorerProps) {
     const [files, setFiles] = useState<FileItem[]>([]);
-    const [currentPath, setCurrentPath] = useState((server.type === 'windows' || server.type === 'ftp') ? '/' : '/root');
+    const [currentPath, setCurrentPath] = useState((server.type === 'windows' || server.type === 'ftp' || server.type === 's3') ? '/' : '/root');
     const [socket, setSocket] = useState<Socket | null>(null);
     const [isLoading, setIsLoading] = useState(false);
     const [isConnectionReady, setIsConnectionReady] = useState(false);
@@ -32,7 +32,7 @@ export default function FileExplorer({ server, isVisible }: FileExplorerProps) {
     useEffect(() => {
         setFiles([]);
         // Default to /root for Linux SSH, but / for Windows and FTP
-        const defaultPath = (server.type === 'windows' || server.type === 'ftp') ? '/' : '/root';
+        const defaultPath = (server.type === 'windows' || server.type === 'ftp' || server.type === 's3') ? '/' : '/root';
         setCurrentPath(defaultPath);
     }, [server.id, server.type]);
 
@@ -61,7 +61,13 @@ export default function FileExplorer({ server, isVisible }: FileExplorerProps) {
                 username: server.username,
                 password: server.password,
                 type: server.type,
-                port: portToUse
+                port: portToUse,
+                s3_provider: server.s3_provider,
+                s3_bucket: server.s3_bucket,
+                s3_region: server.s3_region,
+                s3_endpoint: server.s3_endpoint,
+                s3_access_key: server.s3_access_key,
+                s3_secret_key: server.s3_secret_key
             });
         });
 
@@ -177,7 +183,9 @@ export default function FileExplorer({ server, isVisible }: FileExplorerProps) {
                 </button>
 
                 <div className="flex-1 flex items-center bg-black border border-zinc-800 rounded px-2 py-1 text-xs text-zinc-400 font-mono">
-                    <span className="mr-2 text-zinc-600">{(server.type === 'ftp' ? 'ftp' : 'sftp')}://{server.ip}</span>
+                    <span className="mr-2 text-zinc-600">
+                        {server.type === 's3' ? 's3' : (server.type === 'ftp' ? 'ftp' : 'sftp')}://{server.ip || server.name}
+                    </span>
                     <input
                         className="bg-transparent w-full outline-none text-zinc-200"
                         value={currentPath}
