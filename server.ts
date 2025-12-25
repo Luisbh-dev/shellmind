@@ -46,8 +46,8 @@ app.get("/api/servers", (req, res) => {
 app.post("/api/servers", (req, res) => {
     console.log("POST /api/servers received body:", req.body);
     try {
-        const { name, ip, type, username, password, port, ssh_port, s3_provider, s3_bucket, s3_region, s3_endpoint, s3_access_key, s3_secret_key } = req.body;
-        const sql = "INSERT INTO servers (name, ip, type, username, password, port, ssh_port, s3_provider, s3_bucket, s3_region, s3_endpoint, s3_access_key, s3_secret_key) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)";
+        const { name, ip, type, username, password, port, ssh_port, s3_provider, s3_bucket, s3_region, s3_endpoint, s3_access_key, s3_secret_key, privateKey, passphrase } = req.body;
+        const sql = "INSERT INTO servers (name, ip, type, username, password, port, ssh_port, s3_provider, s3_bucket, s3_region, s3_endpoint, s3_access_key, s3_secret_key, privateKey, passphrase) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)";
         // For Linux: port is SSH. For Windows: port is RDP, ssh_port is SSH.
         const params = [
             name,
@@ -62,7 +62,9 @@ app.post("/api/servers", (req, res) => {
             s3_region,
             s3_endpoint,
             s3_access_key,
-            s3_secret_key
+            s3_secret_key,
+            req.body.privateKey,
+            req.body.passphrase
         ];
 
         console.log("Executing SQL:", sql, "Params:", params);
@@ -88,8 +90,8 @@ app.post("/api/servers", (req, res) => {
 // Update an existing server
 app.put("/api/servers/:id", (req, res) => {
     console.log("PUT /api/servers/" + req.params.id, req.body);
-    const { name, ip, type, username, password, port, os_detail, ssh_port, s3_provider, s3_bucket, s3_region, s3_endpoint, s3_access_key, s3_secret_key } = req.body;
-    const sql = "UPDATE servers SET name = ?, ip = ?, type = ?, username = ?, password = ?, port = ?, os_detail = ?, ssh_port = ?, s3_provider = ?, s3_bucket = ?, s3_region = ?, s3_endpoint = ?, s3_access_key = ?, s3_secret_key = ? WHERE id = ?";
+    const { name, ip, type, username, password, port, os_detail, ssh_port, s3_provider, s3_bucket, s3_region, s3_endpoint, s3_access_key, s3_secret_key, privateKey, passphrase } = req.body;
+    const sql = "UPDATE servers SET name = ?, ip = ?, type = ?, username = ?, password = ?, port = ?, os_detail = ?, ssh_port = ?, s3_provider = ?, s3_bucket = ?, s3_region = ?, s3_endpoint = ?, s3_access_key = ?, s3_secret_key = ?, privateKey = ?, passphrase = ? WHERE id = ?";
     const params = [
         name,
         ip,
@@ -105,6 +107,8 @@ app.put("/api/servers/:id", (req, res) => {
         s3_endpoint,
         s3_access_key,
         s3_secret_key,
+        privateKey,
+        passphrase,
         req.params.id
     ];
 
@@ -556,6 +560,8 @@ io.on("connection", (socket) => {
                 port: port,
                 username: username,
                 password: config.password,
+                privateKey: config.privateKey,
+                passphrase: config.passphrase,
                 tryKeyboard: false, // Force password auth first since server supports it
                 hostVerifier: () => true, // Accept any host key explicitly
                 readyTimeout: 20000,

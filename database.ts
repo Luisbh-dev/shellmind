@@ -63,6 +63,10 @@ const db = new sqlite3.Database(dbPath, (err) => {
                     });
                 });
 
+                // SSH Key Migration
+                db.run(`ALTER TABLE servers ADD COLUMN privateKey TEXT`, () => { });
+                db.run(`ALTER TABLE servers ADD COLUMN passphrase TEXT`, () => { });
+
                 // Create settings table
                 db.run(`CREATE TABLE IF NOT EXISTS settings (
                 key TEXT PRIMARY KEY,

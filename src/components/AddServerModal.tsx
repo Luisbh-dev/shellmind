@@ -22,8 +22,11 @@ export default function AddServerModal({ isOpen, onClose, onAdd, initialData }: 
         s3_region: 'us-east-1',
         s3_endpoint: '',
         s3_access_key: '',
-        s3_secret_key: ''
+        s3_secret_key: '',
+        privateKey: '',
+        passphrase: ''
     });
+    const [authMethod, setAuthMethod] = useState<'password' | 'key'>('password');
     const [type, setType] = useState<'linux' | 'windows' | 'ftp' | 's3'>('linux');
     const [isLoading, setIsLoading] = useState(false);
 
@@ -42,16 +45,25 @@ export default function AddServerModal({ isOpen, onClose, onAdd, initialData }: 
                 s3_region: initialData.s3_region || 'us-east-1',
                 s3_endpoint: initialData.s3_endpoint || '',
                 s3_access_key: initialData.s3_access_key || '',
-                s3_secret_key: initialData.s3_secret_key || ''
+                s3_secret_key: initialData.s3_secret_key || '',
+                privateKey: initialData.privateKey || '',
+                passphrase: initialData.passphrase || ''
             });
             setType(initialData.type || 'linux');
+            if (initialData.privateKey) {
+                setAuthMethod('key');
+            } else {
+                setAuthMethod('password');
+            }
         } else {
             // Reset form if adding new
             setFormData({
                 name: '', ip: '', username: '', password: '', port: '', ssh_port: '',
-                s3_provider: 'aws', s3_bucket: '', s3_region: 'us-east-1', s3_endpoint: '', s3_access_key: '', s3_secret_key: ''
+                s3_provider: 'aws', s3_bucket: '', s3_region: 'us-east-1', s3_endpoint: '', s3_access_key: '', s3_secret_key: '',
+                privateKey: '', passphrase: ''
             });
             setType('linux');
+            setAuthMethod('password');
         }
     }, [initialData, isOpen]);
 
@@ -78,7 +90,10 @@ export default function AddServerModal({ isOpen, onClose, onAdd, initialData }: 
                 s3_region: type === 's3' ? formData.s3_region : undefined,
                 s3_endpoint: type === 's3' ? formData.s3_endpoint : undefined,
                 s3_access_key: type === 's3' ? formData.s3_access_key : undefined,
-                s3_secret_key: type === 's3' ? formData.s3_secret_key : undefined
+                s3_secret_key: type === 's3' ? formData.s3_secret_key : undefined,
+                privateKey: type !== 's3' && authMethod === 'key' ? formData.privateKey : undefined,
+                passphrase: type !== 's3' && authMethod === 'key' ? formData.passphrase : undefined,
+                password: type !== 's3' && authMethod === 'password' ? formData.password : undefined
             };
 
             const res = await fetch(url, {
@@ -93,8 +108,10 @@ export default function AddServerModal({ isOpen, onClose, onAdd, initialData }: 
                 if (!initialData) {
                     setFormData({
                         name: '', ip: '', username: '', password: '', port: '', ssh_port: '',
-                        s3_provider: 'aws', s3_bucket: '', s3_region: 'us-east-1', s3_endpoint: '', s3_access_key: '', s3_secret_key: ''
+                        s3_provider: 'aws', s3_bucket: '', s3_region: 'us-east-1', s3_endpoint: '', s3_access_key: '', s3_secret_key: '',
+                        privateKey: '', passphrase: ''
                     });
+                    setAuthMethod('password');
                 }
             } else {
                 console.error("Failed to save server");
@@ -234,6 +251,34 @@ export default function AddServerModal({ isOpen, onClose, onAdd, initialData }: 
                                 </div>
                             )}
 
+
+
+                            {/* Auth Method Toggle */}
+                            {(type === 'linux' || type === 'windows') && (
+                                <div className="flex gap-4 border-b border-zinc-800 pb-2">
+                                    <label className="flex items-center gap-2 cursor-pointer">
+                                        <input
+                                            type="radio"
+                                            name="authMethod"
+                                            checked={authMethod === 'password'}
+                                            onChange={() => setAuthMethod('password')}
+                                            className="accent-blue-600"
+                                        />
+                                        <span className="text-xs text-zinc-300">Password</span>
+                                    </label>
+                                    <label className="flex items-center gap-2 cursor-pointer">
+                                        <input
+                                            type="radio"
+                                            name="authMethod"
+                                            checked={authMethod === 'key'}
+                                            onChange={() => setAuthMethod('key')}
+                                            className="accent-blue-600"
+                                        />
+                                        <span className="text-xs text-zinc-300">Private Key</span>
+                                    </label>
+                                </div>
+                            )}
+
                             <div className="grid grid-cols-2 gap-3">
                                 <div>
                                     <label className="block text-[10px] uppercase text-zinc-500 font-bold mb-1">Username</label>
@@ -246,17 +291,45 @@ export default function AddServerModal({ isOpen, onClose, onAdd, initialData }: 
                                         placeholder="root"
                                     />
                                 </div>
+
+                                {authMethod === 'password' ? (
+                                    <div>
+                                        <label className="block text-[10px] uppercase text-zinc-500 font-bold mb-1">Password</label>
+                                        <input
+                                            type="password"
+                                            value={formData.password}
+                                            onChange={e => setFormData({ ...formData, password: e.target.value })}
+                                            className="w-full bg-black border border-zinc-800 text-zinc-200 text-sm px-3 py-2 rounded focus:border-blue-600 focus:outline-none"
+                                            placeholder="••••••"
+                                        />
+                                    </div>
+                                ) : (
+                                    <div>
+                                        <label className="block text-[10px] uppercase text-zinc-500 font-bold mb-1">Passphrase (Optional)</label>
+                                        <input
+                                            type="password"
+                                            value={formData.passphrase}
+                                            onChange={e => setFormData({ ...formData, passphrase: e.target.value })}
+                                            className="w-full bg-black border border-zinc-800 text-zinc-200 text-sm px-3 py-2 rounded focus:border-blue-600 focus:outline-none"
+                                            placeholder="Key Passphrase"
+                                        />
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Private Key Textarea */}
+                            {authMethod === 'key' && (
                                 <div>
-                                    <label className="block text-[10px] uppercase text-zinc-500 font-bold mb-1">Password</label>
-                                    <input
-                                        type="password"
-                                        value={formData.password}
-                                        onChange={e => setFormData({ ...formData, password: e.target.value })}
-                                        className="w-full bg-black border border-zinc-800 text-zinc-200 text-sm px-3 py-2 rounded focus:border-blue-600 focus:outline-none"
-                                        placeholder="••••••"
+                                    <label className="block text-[10px] uppercase text-zinc-500 font-bold mb-1">Private Key (PEM/OpenSSH)</label>
+                                    <textarea
+                                        value={formData.privateKey}
+                                        onChange={e => setFormData({ ...formData, privateKey: e.target.value })}
+                                        className="w-full bg-black border border-zinc-800 text-zinc-200 text-sm px-3 py-2 rounded focus:border-blue-600 focus:outline-none font-mono text-xs"
+                                        placeholder="-----BEGIN OPENSSH PRIVATE KEY-----..."
+                                        rows={5}
                                     />
                                 </div>
-                            </div>
+                            )}
                         </div>
                     )}
 
