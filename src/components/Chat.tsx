@@ -304,12 +304,12 @@ export default function Chat({ activeServer, terminalHistory }: ChatProps) {
                 className="h-10 px-4 border-b border-zinc-800 flex items-center justify-between bg-zinc-900/50 shrink-0"
                 style={{
                     WebkitAppRegion: isElectron ? 'drag' : undefined,
-                    paddingRight: isElectron ? '160px' : undefined
+                    paddingRight: isElectron ? '138px' : undefined
                 } as any}
             >
                 <div className="flex items-center gap-2" style={{ WebkitAppRegion: 'no-drag' } as any}>
                     <Sparkles className="w-3.5 h-3.5 text-teal-500" />
-                    <span className="font-bold text-xs text-zinc-300 uppercase tracking-wider hidden sm:inline">AI Assistant</span>
+                    {!isElectron && <span className="font-bold text-xs text-zinc-300 uppercase tracking-wider hidden sm:inline">AI Assistant</span>}
 
                     {/* Model Selector */}
                     <select
