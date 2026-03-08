@@ -18,13 +18,16 @@ function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 800,
+    icon: isDev
+      ? path.join(__dirname, '../build/icon.ico')
+      : path.join(process.resourcesPath, 'build', 'icon.ico'),
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
       // preload: path.join(__dirname, 'preload.js'),
     },
     autoHideMenuBar: true,
-    titleBarStyle: 'hidden', // For a modern look if we want custom title bar later
+    titleBarStyle: 'hidden',
     titleBarOverlay: {
         color: '#18181b', // Zinc-950
         symbolColor: '#e4e4e7', // Zinc-200

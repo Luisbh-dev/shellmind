@@ -343,6 +343,7 @@ export default function Chat({ activeServer, terminalHistory }: ChatProps) {
             <div
                 className="flex-1 min-h-0 overflow-y-auto p-4 space-y-6"
                 ref={messagesContainerRef}
+                style={{ WebkitAppRegion: 'no-drag' } as any}
             >
                 {messages.map((msg) => (
                     <div
@@ -384,7 +385,7 @@ export default function Chat({ activeServer, terminalHistory }: ChatProps) {
             </div>
 
             {/* Input Area */}
-            <div className="p-3 border-t border-zinc-800 bg-zinc-900/50 shrink-0">
+            <div className="p-3 border-t border-zinc-800 bg-zinc-900/50 shrink-0" style={{ WebkitAppRegion: 'no-drag' } as any}>
                 <div className="relative">
                     <textarea
                         value={input}
