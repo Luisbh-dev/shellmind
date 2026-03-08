@@ -12,6 +12,7 @@ dist-electron
 dist-server
 release
 release*
+scripts
 
 # Environment Variables
 .env
