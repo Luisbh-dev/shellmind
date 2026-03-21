@@ -33,6 +33,7 @@ function App() {
     const [servers, setServers] = useState<any[]>([]);
     const [editingServer, setEditingServer] = useState<any>(null);
     const [isChatOpen, setIsChatOpen] = useState(true);
+    const [statusTerminalMounted, setStatusTerminalMounted] = useState(false);
 
     // Terminal History Buffer (Ref to avoid re-renders)
     const terminalHistoryRef = useRef('');
@@ -183,6 +184,7 @@ function App() {
         recentTerminalIssueKeysRef.current.clear();
         lastTerminalIssueIdRef.current = null;
         setIsChatOpen(server.type !== 's3');
+        setStatusTerminalMounted(false);
         setActiveTab((server.type === 'ftp' || server.type === 's3') ? 'sftp' : 'ssh');
     };
 
@@ -294,7 +296,10 @@ function App() {
 
                                 {activeServer.type !== 'ftp' && activeServer.type !== 's3' && (
                                     <button
-                                        onClick={() => setActiveTab('status')}
+                                        onClick={() => {
+                                            setStatusTerminalMounted(true);
+                                            setActiveTab('status');
+                                        }}
                                         className={clsx(
                                             "px-4 h-full text-xs font-medium flex items-center gap-2 transition-colors border-l border-r border-zinc-800",
                                             activeTab === 'status' ? "bg-zinc-800 text-zinc-100" : "text-zinc-500 hover:bg-zinc-900 hover:text-zinc-300"
@@ -349,27 +354,29 @@ function App() {
                 <div className="flex-1 relative bg-[#0a0a0a] min-h-0 overflow-hidden">
                     {activeServer ? (
                         <>
-                            {activeTab === 'ssh' && (
-                                <div className="absolute inset-0">
+                            {activeServer.type !== 's3' && (
+                                <div className={clsx("absolute inset-0", activeTab === 'ssh' ? "block" : "hidden")}>
                                     <TerminalComponent
-                                    server={activeServer}
-                                    onOsDetected={handleOsDetected}
-                                    onOutput={handleTerminalOutput}
-                                    isActive={activeTab === 'ssh'}
-                                />
-                            </div>
-                        )}
+                                        key={`terminal-ssh-${activeServer.id}`}
+                                        server={activeServer}
+                                        onOsDetected={handleOsDetected}
+                                        onOutput={handleTerminalOutput}
+                                        isActive={activeTab === 'ssh'}
+                                    />
+                                </div>
+                            )}
 
-                            {activeTab === 'status' && (
-                                <div className="absolute inset-0">
+                            {statusTerminalMounted && activeServer.type !== 'ftp' && activeServer.type !== 's3' && (
+                                <div className={clsx("absolute inset-0", activeTab === 'status' ? "block" : "hidden")}>
                                     <TerminalComponent
-                                    server={activeServer}
-                                    initialCommand={statusCommand}
-                                    onOutput={handleTerminalOutput}
-                                    isActive={activeTab === 'status'}
-                                />
-                            </div>
-                        )}
+                                        key={`terminal-status-${activeServer.id}`}
+                                        server={activeServer}
+                                        initialCommand={statusCommand}
+                                        onOutput={handleTerminalOutput}
+                                        isActive={activeTab === 'status'}
+                                    />
+                                </div>
+                            )}
 
                             {isWindows && (
                                 <div className={clsx("absolute inset-0 bg-[#0a0a0a]", activeTab === 'rdp' ? "block" : "hidden")}>

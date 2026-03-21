@@ -1,19 +1,23 @@
 # ShellMind
 
-> **Version 0.1.9**
+> Version 0.1.9
 
-ShellMind is a self-hosted server workspace that brings terminal access, file management, remote desktop, and AI assistance into one interface.
+ShellMind is a self-hosted remote workspace that combines terminal access, file management, remote desktop, and AI assistance in one focused interface.
 
-It is built for fast day-to-day operations across SSH, PowerShell, FTP, SFTP, and S3-compatible storage, while keeping the workflow local and focused.
+It is designed for day-to-day server work across SSH, PowerShell, FTP, SFTP, and S3-compatible storage while keeping the workflow fast, local, and practical.
 
 ## What is new in 0.1.9
 
-- Better UX across the file explorer and AI assistant flows.
-- Create folders from a modal, with protocol-aware handling for SSH, FTP, and S3.
-- Rename files and folders directly from the file browser.
+- Cleaner overall UX across the terminal, file explorer, and assistant.
+- Protocol-aware folder creation and rename flows from the file browser.
 - Improved automatic SSH error detection from terminal output.
-- Cleaner AI-assisted troubleshooting with `Analyze` and `Fix it`.
-- Safer Auto-Run confirmation in the chat.
+- SSH errors now appear highlighted directly inside the terminal.
+- Clickable URLs in terminal output.
+- Terminal search with `Ctrl+F`.
+- Screen clear button in the terminal toolbar.
+- Contextual AI Hints for common shell and troubleshooting tasks.
+- Safer Auto-Run confirmation inside the chat.
+- S3 keeps the assistant disabled to stay focused on file browsing.
 
 ## Core features
 
@@ -23,21 +27,24 @@ It is built for fast day-to-day operations across SSH, PowerShell, FTP, SFTP, an
 - Enable Auto-Run for trusted command execution.
 - Use `Analyze` and `Fix it` when SSH failures are detected.
 
-### Terminal and monitoring
+### Terminal
 - SSH terminal for Linux and Unix-like servers.
 - PowerShell and SSH support for Windows servers.
 - Live status tab for system checks and diagnostics.
-- Terminal output is scanned for common failure patterns and surfaced in the assistant.
+- Automatic detection of common SSH failures from terminal output.
+- Highlighted error lines and clickable links directly in the terminal.
+- Built-in terminal search and quick clear controls.
 
 ### File management
 - Browse, upload, download, delete, rename, and create folders.
 - SFTP and FTP support for remote file operations.
 - S3 bucket browsing with folder marker support.
+- Folder creation and rename actions via modal dialogs.
 - AI assistant is disabled for S3 to keep the experience focused.
 
 ### Remote access
 - Native RDP launch for Windows servers.
-- Unified connection switching from the sidebar.
+- Unified server switching from the sidebar.
 
 ## Getting started
 
@@ -74,9 +81,11 @@ This starts the frontend and backend together.
 ## Release notes
 
 ### 0.1.9
-- UI/UX polish across the assistant and file explorer.
-- Folder creation and rename flows added to the file browser.
-- Automatic SSH error detection improved and surfaced in the assistant.
+- Terminal search and clickable URLs added to xterm.
+- SSH error lines are now highlighted directly in the terminal.
+- File explorer now supports modal-based create folder and rename flows.
+- AI Hints and terminal controls were polished for a cleaner workflow.
+- Auto-Run confirmation and SSH error analysis were refined.
 
 ### 0.1.8
 - SSH issue detection and `Fix it` workflow introduced.

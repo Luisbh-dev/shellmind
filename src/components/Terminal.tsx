@@ -1,12 +1,14 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Terminal as XTerm } from "xterm";
+import { Terminal as XTerm, type IDecoration, type IMarker } from "xterm";
+import { WebLinksAddon } from "@xterm/addon-web-links";
 import { FitAddon } from "xterm-addon-fit";
 import { WebglAddon } from "xterm-addon-webgl";
+import { SearchAddon } from "@xterm/addon-search";
 import "xterm/css/xterm.css";
 import io, { Socket } from "socket.io-client";
-import { Book, X } from "lucide-react";
+import { Book, ChevronDown, ChevronUp, Eraser, Search, X } from "lucide-react";
 import { clsx } from "clsx";
 
 interface TerminalProps {
@@ -27,6 +29,12 @@ type HintGroup = {
     title: string;
     subtitle: string;
     items: Hint[];
+};
+
+type ErrorHighlight = {
+    marker: IMarker;
+    decoration?: IDecoration;
+    disposeRender?: () => void;
 };
 
 const AI_HINTS: Record<string, HintGroup[]> = {
@@ -88,12 +96,252 @@ const AI_HINTS: Record<string, HintGroup[]> = {
     ]
 };
 
+const stripAnsiCodes = (value: string) => value.replace(/\x1B\[[0-9;?]*[ -/]*[@-~]/g, "");
+const normalizeTerminalText = (value: string) => stripAnsiCodes(value).replace(/\r/g, "");
+
+const ERROR_LINE_PATTERN =
+    /(?:^|\b)(permission denied|command not found|not recognized|no such file or directory|cannot find path|access denied|refused|timed out|fatal|error:|exception|authentication failed|auth failed|forbidden|unable to find package provider|provider .* not found|could not find package provider|the term .* is not recognized|cannot stat|cannot open|operation not permitted|broken pipe|segmentation fault|bad file descriptor|failed)\b/i;
+
+const looksLikeErrorLine = (line: string) => {
+    const trimmed = line.trim();
+    if (!trimmed) return false;
+    if (/^\s*(error|fatal|exception)\b/i.test(trimmed)) return true;
+    if (/^Error:\s+/i.test(trimmed)) return true;
+    return ERROR_LINE_PATTERN.test(trimmed);
+};
+
+const normalizeUrlForOpen = (text: string) => {
+    if (/^www\./i.test(text)) {
+        return `https://${text}`;
+    }
+
+    return text;
+};
+
 export default function TerminalComponent({ server, onOsDetected, onOutput, initialCommand, isActive = true }: TerminalProps) {
   const terminalRef = useRef<HTMLDivElement>(null);
   const socketRef = useRef<Socket | null>(null);
   const xtermRef = useRef<XTerm | null>(null);
+  const searchAddonRef = useRef<SearchAddon | null>(null);
   const [showRecipes, setShowRecipes] = useState(false);
+  const [showSearch, setShowSearch] = useState(false);
+  const [searchValue, setSearchValue] = useState("");
+  const [searchStats, setSearchStats] = useState({ index: -1, count: 0 });
   const initialCommandSent = useRef(false);
+  const showSearchRef = useRef(showSearch);
+  const searchValueRef = useRef(searchValue);
+  const errorHighlightsRef = useRef<ErrorHighlight[]>([]);
+
+  useEffect(() => {
+      showSearchRef.current = showSearch;
+  }, [showSearch]);
+
+  useEffect(() => {
+      searchValueRef.current = searchValue;
+  }, [searchValue]);
+
+  const searchOptions = {
+      caseSensitive: false,
+      wholeWord: false,
+      regex: false,
+      decorations: {
+          matchBackground: "#22314a",
+          matchBorder: "#60a5fa",
+          matchOverviewRuler: "#60a5fa",
+          activeMatchBackground: "#1d4ed8",
+          activeMatchBorder: "#93c5fd",
+          activeMatchColorOverviewRuler: "#93c5fd"
+      }
+  };
+
+  const clearSearch = () => {
+      searchAddonRef.current?.clearDecorations();
+      setSearchStats({ index: -1, count: 0 });
+  };
+
+  const clearTerminalScreen = () => {
+      xtermRef.current?.clear();
+      clearSearch();
+      xtermRef.current?.focus();
+  };
+
+  const openSearchPanel = () => {
+      setShowRecipes(false);
+      setShowSearch(true);
+      if (searchValueRef.current.trim()) {
+          window.requestAnimationFrame(() => runSearch("next", searchValueRef.current));
+      }
+      window.requestAnimationFrame(() => xtermRef.current?.focus());
+  };
+
+  const closeSearchPanel = () => {
+      setShowSearch(false);
+      clearSearch();
+  };
+
+  const disposeErrorHighlight = (highlight: ErrorHighlight) => {
+      try {
+          highlight.disposeRender?.();
+      } catch (error) {
+          console.warn("Failed to dispose terminal error action", error);
+      }
+
+      try {
+          highlight.decoration?.dispose();
+      } catch (error) {
+          console.warn("Failed to dispose terminal error decoration", error);
+      }
+
+      try {
+          highlight.marker.dispose();
+      } catch (error) {
+          console.warn("Failed to dispose terminal error marker", error);
+      }
+  };
+
+  const clearErrorHighlights = () => {
+      errorHighlightsRef.current.forEach(disposeErrorHighlight);
+      errorHighlightsRef.current = [];
+  };
+
+  const addErrorHighlight = (term: XTerm, cursorYOffset: number) => {
+      const marker = term.registerMarker(cursorYOffset);
+      if (!marker) return;
+
+      const highlight: ErrorHighlight = { marker };
+      errorHighlightsRef.current.push(highlight);
+
+      const decoration = term.registerDecoration({
+          marker,
+          anchor: "left",
+          x: 0,
+          width: Math.max(term.cols, 1),
+          height: 1,
+          backgroundColor: "#3b1a1e",
+          foregroundColor: "#fecaca",
+          layer: "bottom",
+          overviewRulerOptions: {
+              color: "#ef4444",
+              position: "right"
+          }
+      });
+
+      if (!decoration) {
+          errorHighlightsRef.current.pop();
+          marker.dispose();
+          return;
+      }
+
+      highlight.decoration = decoration;
+
+      decoration.onRender(() => {
+          if (!decoration.element) return;
+
+          decoration.element.style.position = "relative";
+          decoration.element.style.display = "flex";
+          decoration.element.style.alignItems = "center";
+          decoration.element.style.pointerEvents = "auto";
+          decoration.element.style.boxShadow = "inset 3px 0 0 #f87171";
+          decoration.element.style.borderRadius = "3px";
+
+          if (decoration.element.querySelector("[data-error-action='true']")) {
+              return;
+          }
+
+          const actionButton = document.createElement("button");
+          actionButton.type = "button";
+          actionButton.dataset.errorAction = "true";
+          actionButton.title = "Fix this SSH issue";
+          actionButton.textContent = "⚡";
+          actionButton.style.position = "absolute";
+          actionButton.style.left = "4px";
+          actionButton.style.top = "50%";
+          actionButton.style.transform = "translateY(-50%)";
+          actionButton.style.width = "18px";
+          actionButton.style.height = "18px";
+          actionButton.style.border = "1px solid rgba(248, 113, 113, 0.45)";
+          actionButton.style.borderRadius = "9999px";
+          actionButton.style.background = "rgba(127, 29, 29, 0.95)";
+          actionButton.style.color = "#fecaca";
+          actionButton.style.fontSize = "11px";
+          actionButton.style.lineHeight = "1";
+          actionButton.style.padding = "0";
+          actionButton.style.display = "flex";
+          actionButton.style.alignItems = "center";
+          actionButton.style.justifyContent = "center";
+          actionButton.style.cursor = "pointer";
+          actionButton.style.boxShadow = "0 0 0 1px rgba(0, 0, 0, 0.25)";
+
+          const handleActionClick = (event: MouseEvent) => {
+              event.preventDefault();
+              event.stopPropagation();
+              window.dispatchEvent(new CustomEvent("terminal-issue-action", { detail: { action: "fix" } }));
+          };
+
+          actionButton.addEventListener("click", handleActionClick);
+          decoration.element.appendChild(actionButton);
+
+          highlight.disposeRender = () => {
+              actionButton.removeEventListener("click", handleActionClick);
+              actionButton.remove();
+          };
+      });
+
+      marker.onDispose(() => {
+          highlight.decoration?.dispose();
+          errorHighlightsRef.current = errorHighlightsRef.current.filter((item) => item.marker !== marker);
+      });
+
+      while (errorHighlightsRef.current.length > 14) {
+          const oldest = errorHighlightsRef.current.shift();
+          if (oldest) {
+              disposeErrorHighlight(oldest);
+          }
+      }
+  };
+
+  const highlightErrorLines = (term: XTerm, data: string, force = false) => {
+      const normalized = normalizeTerminalText(data);
+      if (!normalized.trim()) return;
+
+      const endsWithNewline = /\n\s*$/.test(normalized);
+      if (!force && !endsWithNewline) return;
+
+      const lines = normalized.split(/\n/).map((line) => line.trimEnd());
+      const lastVisibleLineIndex = endsWithNewline
+          ? Math.max(lines.length - 2, 0)
+          : Math.max(lines.length - 1, 0);
+      const matchedIndexes = lines
+          .map((line, index) => ({ line, index }))
+          .filter(({ line }) => looksLikeErrorLine(line))
+          .map(({ index }) => index);
+
+      if (!matchedIndexes.length) return;
+
+      matchedIndexes.forEach((lineIndex) => {
+          const cursorYOffset = lineIndex - lastVisibleLineIndex - (endsWithNewline ? 1 : 0);
+          addErrorHighlight(term, cursorYOffset);
+      });
+  };
+
+  const runSearch = (direction: "next" | "prev" = "next", termOverride?: string) => {
+      const term = (termOverride ?? searchValue).trim();
+      const addon = searchAddonRef.current;
+      if (!addon) return;
+
+      if (!term) {
+          clearSearch();
+          return;
+      }
+
+      const found = direction === "prev"
+          ? addon.findPrevious(term, searchOptions)
+          : addon.findNext(term, searchOptions);
+
+      if (!found) {
+          setSearchStats({ index: -1, count: 0 });
+      }
+  };
 
   useEffect(() => {
     initialCommandSent.current = false;
@@ -114,6 +362,30 @@ export default function TerminalComponent({ server, onOsDetected, onOutput, init
 
     const fitAddon = new FitAddon();
     term.loadAddon(fitAddon);
+
+    const searchAddon = new SearchAddon({ highlightLimit: 1200 });
+    term.loadAddon(searchAddon);
+    searchAddonRef.current = searchAddon;
+    const searchResultsDisposable = searchAddon.onDidChangeResults(({ resultIndex, resultCount }) => {
+        setSearchStats({ index: resultIndex, count: resultCount });
+    });
+
+    const webLinksAddon = new WebLinksAddon((event, uri) => {
+        event.preventDefault();
+        event.stopPropagation();
+
+        try {
+            const normalized = normalizeUrlForOpen(uri);
+            const parsed = new URL(normalized);
+            if (!/^https?:$/.test(parsed.protocol)) return;
+            window.open(parsed.toString(), "_blank", "noopener,noreferrer");
+        } catch (error) {
+            console.warn("Failed to open terminal link", error);
+        }
+    }, {
+        urlRegex: /(?:https?:\/\/|www\.)[^\s"'!*(){}|\\^<>`]*[^\s"':,.!?{}|\\^~\[\]`()<>]/
+    });
+    term.loadAddon(webLinksAddon);
     
     // Load WebGL addon for performance
     const webglAddon = new WebglAddon();
@@ -131,6 +403,36 @@ export default function TerminalComponent({ server, onOsDetected, onOutput, init
     }
 
     xtermRef.current = term;
+
+    term.attachCustomKeyEventHandler((event) => {
+        if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "f") {
+            event.preventDefault();
+            openSearchPanel();
+            return false;
+        }
+
+        if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "l") {
+            event.preventDefault();
+            clearTerminalScreen();
+            return false;
+        }
+
+        if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k" && showSearchRef.current) {
+            event.preventDefault();
+            setSearchValue("");
+            clearSearch();
+            xtermRef.current?.focus();
+            return false;
+        }
+
+        if (event.key === "Escape" && showSearchRef.current) {
+            event.preventDefault();
+            closeSearchPanel();
+            return false;
+        }
+
+        return true;
+    });
 
     // Use ResizeObserver to handle fitting robustly
     const resizeObserver = new ResizeObserver(() => {
@@ -186,8 +488,10 @@ export default function TerminalComponent({ server, onOsDetected, onOutput, init
       socket.emit("resize", { cols: term.cols, rows: term.rows });
     });
 
-    const emitTerminalOutput = (data: string) => {
-      term.write(data);
+    const emitTerminalOutput = (data: string, forceHighlight = false) => {
+      term.write(data, () => {
+        highlightErrorLines(term, data, forceHighlight);
+      });
       if (onOutput) onOutput(data);
     };
 
@@ -204,7 +508,7 @@ export default function TerminalComponent({ server, onOsDetected, onOutput, init
 
     socket.on("ssh-error", (err: string) => {
       const message = `\r\nError: ${err}\r\n`;
-      emitTerminalOutput(message);
+      emitTerminalOutput(message, true);
     });
 
     socket.on("os-detected", (os: string) => {
@@ -225,10 +529,15 @@ export default function TerminalComponent({ server, onOsDetected, onOutput, init
     return () => {
       resizeObserver.disconnect();
       socket.disconnect();
+      searchResultsDisposable.dispose();
+      searchAddonRef.current = null;
+      clearErrorHighlights();
       
       // Dispose addons first safely
       try { webglAddon.dispose(); } catch(e) {}
       try { fitAddon.dispose(); } catch(e) {}
+      try { searchAddon.dispose(); } catch(e) {}
+      try { webLinksAddon.dispose(); } catch(e) {}
       try { term.dispose(); } catch(e) {}
 
       window.removeEventListener("resize", handleResize);
@@ -266,12 +575,16 @@ export default function TerminalComponent({ server, onOsDetected, onOutput, init
 
   const currentHintGroups = AI_HINTS[server.type] || AI_HINTS.linux;
   return (
-    <div className="relative w-full h-full bg-[#0f1115]">
+        <div className="relative w-full h-full bg-[#0f1115]">
         <div ref={terminalRef} className="w-full h-full overflow-hidden pl-2" />
         
         {/* Recipe Button */}
         <button 
-            onClick={() => setShowRecipes(!showRecipes)}
+            onClick={() => {
+                setShowSearch(false);
+                clearSearch();
+                setShowRecipes(!showRecipes);
+            }}
             className={clsx(
                 "absolute top-2 right-4 p-2 rounded-md backdrop-blur-sm transition-all z-10 shadow-lg border",
                 showRecipes 
@@ -282,6 +595,102 @@ export default function TerminalComponent({ server, onOsDetected, onOutput, init
         >
             <Book className="w-4 h-4" />
         </button>
+
+        <button
+            onClick={() => {
+                openSearchPanel();
+            }}
+            className={clsx(
+                "absolute top-2 right-16 p-2 rounded-md backdrop-blur-sm transition-all z-10 shadow-lg border",
+                showSearch
+                    ? "bg-blue-600 text-white border-blue-500"
+                    : "bg-zinc-800/50 text-zinc-400 border-zinc-700/50 hover:bg-zinc-700 hover:text-zinc-200"
+            )}
+            title="Search terminal"
+        >
+            <Search className="w-4 h-4" />
+        </button>
+
+        <button
+            onClick={clearTerminalScreen}
+            className="absolute top-2 right-28 p-2 rounded-md backdrop-blur-sm transition-all z-10 shadow-lg border bg-zinc-800/50 text-zinc-400 border-zinc-700/50 hover:bg-zinc-700 hover:text-zinc-200"
+            title="Clear terminal"
+        >
+            <Eraser className="w-4 h-4" />
+        </button>
+
+        {showSearch && (
+            <div className="absolute top-12 right-4 w-[20rem] bg-[#0f1115] border border-zinc-800 rounded-lg shadow-2xl z-20 overflow-hidden">
+                <div className="flex items-center justify-between px-3 py-2 border-b border-zinc-800 bg-zinc-900/50">
+                    <div className="min-w-0">
+                        <span className="block text-xs font-bold text-zinc-300 uppercase tracking-wider">Search Terminal</span>
+                        <span className="block text-[10px] text-zinc-500 mt-0.5">Ctrl+F to open, Esc to close</span>
+                    </div>
+                    <button
+                        onClick={() => {
+                            setShowSearch(false);
+                            clearSearch();
+                        }}
+                        className="text-zinc-500 hover:text-white"
+                    >
+                        <X className="w-3.5 h-3.5" />
+                    </button>
+                </div>
+                <div className="p-3 space-y-2">
+                    <input
+                        autoFocus
+                        value={searchValue}
+                        onChange={(e) => {
+                            const nextValue = e.target.value;
+                            setSearchValue(nextValue);
+                            window.requestAnimationFrame(() => runSearch("next", nextValue));
+                        }}
+                        onKeyDown={(e) => {
+                            if (e.key === "Enter" && e.shiftKey) {
+                                e.preventDefault();
+                                runSearch("prev");
+                            } else if (e.key === "Enter") {
+                                e.preventDefault();
+                                runSearch("next");
+                            } else if (e.key === "Escape") {
+                                e.preventDefault();
+                                closeSearchPanel();
+                            }
+                        }}
+                        placeholder="Find text in terminal..."
+                        className="w-full rounded border border-zinc-700 bg-black px-3 py-2 text-sm text-zinc-100 outline-none focus:border-blue-500"
+                    />
+                    <div className="flex items-center justify-between gap-3 text-[10px] text-zinc-500">
+                        <span className="max-w-[11rem]">
+                            {searchValue.trim()
+                                ? (searchStats.count > 0
+                                    ? `${searchStats.index >= 0 ? searchStats.index + 1 : 0}/${searchStats.count} matches`
+                                    : "No matches")
+                                : "Type to search the buffer"}
+                        </span>
+                        <div className="flex items-center gap-2">
+                            <span className="hidden sm:inline text-[10px] text-zinc-600">Ctrl+L clears, Ctrl+K clears search</span>
+                            <div className="flex items-center gap-1">
+                            <button
+                                onClick={() => runSearch("prev")}
+                                className="rounded border border-zinc-700 px-2 py-1 text-zinc-300 hover:bg-zinc-800"
+                                title="Previous match"
+                            >
+                                <ChevronUp className="w-3 h-3" />
+                            </button>
+                            <button
+                                onClick={() => runSearch("next")}
+                                className="rounded border border-zinc-700 px-2 py-1 text-zinc-300 hover:bg-zinc-800"
+                                title="Next match"
+                            >
+                                <ChevronDown className="w-3 h-3" />
+                            </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        )}
 
         {/* Recipes Menu */}
         {showRecipes && (
