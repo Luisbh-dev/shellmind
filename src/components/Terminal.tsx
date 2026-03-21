@@ -109,10 +109,7 @@ export default function TerminalComponent({ server, onOsDetected, onOutput, init
     term.writeln(`Connecting to ${server.name} (${server.ip})...`);
     
     // Initialize socket connection
-    const socket = io('http://localhost:3001', {
-        transports: ['websocket'],
-        upgrade: false
-    }); 
+    const socket = io('http://localhost:3001'); 
     socketRef.current = socket;
 
     socket.on("connect", () => {

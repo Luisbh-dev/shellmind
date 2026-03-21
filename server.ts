@@ -2,6 +2,7 @@ import express from "express";
 import { createServer } from "http";
 import { Server } from "socket.io";
 import { Client } from "ssh2";
+const rdp = require("@electerm/rdpjs");
 import { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold } from "@google/generative-ai";
 import { S3Client, ListObjectsV2Command, GetObjectCommand, PutObjectCommand, DeleteObjectCommand, DeleteObjectsCommand } from "@aws-sdk/client-s3";
 import cors from "cors";
@@ -390,11 +391,60 @@ io.on("connection", (socket) => {
     let s3Bucket: string = "";
     let connectionType: 'ssh' | 'ftp' | 's3' = 'ssh';
     let ftpInProgress = false;
+    let rdpClient: any = null; // RDP Client
+    const bitmapQueue: any[] = [];
+    let bitmapFlushTimer: ReturnType<typeof setTimeout> | null = null;
+    let bitmapBatchMaxTimer: ReturnType<typeof setTimeout> | null = null;
+    const BITMAP_BATCH_IDLE_MS = 120;
+    const BITMAP_BATCH_MAX_MS = 500;
 
     let conn: Client | null = null;
     let termRows = 24;
     let termCols = 80;
     let connectionError: string | null = null;
+
+    const flushBitmapQueue = () => {
+        if (!bitmapQueue.length) return;
+        if (bitmapFlushTimer) {
+            clearTimeout(bitmapFlushTimer);
+            bitmapFlushTimer = null;
+        }
+        if (bitmapBatchMaxTimer) {
+            clearTimeout(bitmapBatchMaxTimer);
+            bitmapBatchMaxTimer = null;
+        }
+        const batch = bitmapQueue.splice(0, bitmapQueue.length);
+        socket.emit("rdp-bitmap-batch", batch);
+    };
+
+    const scheduleBitmapFlush = () => {
+        if (bitmapFlushTimer) {
+            clearTimeout(bitmapFlushTimer);
+        }
+        bitmapFlushTimer = setTimeout(() => {
+            bitmapFlushTimer = null;
+            flushBitmapQueue();
+        }, BITMAP_BATCH_IDLE_MS);
+
+        if (!bitmapBatchMaxTimer) {
+            bitmapBatchMaxTimer = setTimeout(() => {
+                bitmapBatchMaxTimer = null;
+                flushBitmapQueue();
+            }, BITMAP_BATCH_MAX_MS);
+        }
+    };
+
+    const clearBitmapFlush = () => {
+        if (bitmapFlushTimer) {
+            clearTimeout(bitmapFlushTimer);
+            bitmapFlushTimer = null;
+        }
+        if (bitmapBatchMaxTimer) {
+            clearTimeout(bitmapBatchMaxTimer);
+            bitmapBatchMaxTimer = null;
+        }
+        bitmapQueue.length = 0;
+    };
 
     // --- SSH / FTP Connection Handling ---
     socket.on("start-ssh", async (config) => {
@@ -1064,9 +1114,184 @@ io.on("connection", (socket) => {
         }
     });
 
+    // --- RDP Connection Handling ---
+    socket.on("start-rdp", (config) => {
+        console.log("[RDP] Start connection:", { host: config.host, port: config.port, user: config.username });
+
+        // Clean up previous RDP session
+        if (rdpClient) {
+            try { rdpClient.close(); } catch (e) { }
+            rdpClient = null;
+        }
+
+        const host = config.host?.replace(/[\s\u00A0]+/g, '').trim();
+        const port = config.port || 3389;
+        const screenWidth = config.screenWidth || 1280;
+        const screenHeight = config.screenHeight || 800;
+
+        try {
+            rdpClient = rdp.createClient({
+                domain: config.domain || '',
+                userName: config.username || '',
+                password: config.password || '',
+                enablePerf: false,
+                autoLogin: true,
+                decompress: true,
+                screen: { width: screenWidth, height: screenHeight },
+                locale: 'en',
+                logLevel: 'ERROR'
+            });
+
+            // Pass credentials for NLA/CredSSP handshake
+            if (rdpClient.x224) {
+                rdpClient.x224.nlaCredentials = {
+                    domain: config.domain || '',
+                    username: config.username || '',
+                    password: config.password || ''
+                };
+            }
+
+            rdpClient.on('connect', () => {
+                console.log("[RDP] Connected to", host);
+                socket.emit("rdp-connect");
+            });
+
+            rdpClient.on('bitmap', (bitmap: any) => {
+                const originalIsCompress = !!bitmap.isCompress;
+                if (!rdpClient._hasLoggedBitmap) {
+                    const debugInfo = {
+                        w: bitmap.width, h: bitmap.height,
+                        top: bitmap.destTop, left: bitmap.destLeft, right: bitmap.destRight, bottom: bitmap.destBottom,
+                        bpp: bitmap.bitsPerPixel, compress: bitmap.isCompress,
+                        dataLength: bitmap.data.length
+                    };
+                    console.log("SERVER BITMAP DUMP:", debugInfo);
+                    rdpClient._hasLoggedBitmap = true;
+                }
+
+                bitmapQueue.push({
+                    destTop: bitmap.destTop,
+                    destLeft: bitmap.destLeft,
+                    destBottom: bitmap.destBottom,
+                    destRight: bitmap.destRight,
+                    width: bitmap.width,
+                    height: bitmap.height,
+                    bitsPerPixel: bitmap.bitsPerPixel,
+                    isCompress: bitmap.isCompress,
+                    sourceCompressed: originalIsCompress,
+                    data: bitmap.data
+                });
+                scheduleBitmapFlush();
+            });
+
+            rdpClient.on('close', () => {
+                console.log("[RDP] Connection closed");
+                clearBitmapFlush();
+                socket.emit("rdp-closed");
+                rdpClient = null;
+            });
+
+            rdpClient.on('error', (err: any) => {
+                console.error("[RDP] Error:", err);
+                const message = typeof err === 'string' ? err : (err?.message || 'Unknown RDP error');
+                socket.emit("rdp-error", message);
+            });
+
+            rdpClient.connect(host, port);
+
+        } catch (err: any) {
+            clearBitmapFlush();
+            console.error("[RDP] Init Error:", err);
+            socket.emit("rdp-error", "RDP Init Error: " + err.message);
+        }
+    });
+
+    socket.on("rdp-mouse", (data) => {
+        if (rdpClient) {
+            try {
+                rdpClient.sendPointerEvent(data.x, data.y, data.button, data.isPressed);
+            } catch (e) { }
+        }
+    });
+
+    socket.on("rdp-keyboard", (data) => {
+        if (rdpClient) {
+            try {
+                if (data.unicode) {
+                    rdpClient.sendKeyEventUnicode(data.code, data.isPressed);
+                } else {
+                    rdpClient.sendKeyEventScancode(data.code, data.isPressed);
+                }
+            } catch (e) { }
+        }
+    });
+
+    socket.on("rdp-disconnect", () => {
+        console.log("[RDP] Client requested disconnect");
+        clearBitmapFlush();
+        if (rdpClient) {
+            try { rdpClient.close(); } catch (e) { }
+            rdpClient = null;
+        }
+    });
+
+    // --- Native RDP Launch (mstsc.exe) ---
+    socket.on("launch-rdp-native", async (config) => {
+        const { exec } = require('child_process');
+        const host = config.host?.replace(/[\s\u00A0]+/g, '').trim();
+        const port = config.port || 3389;
+        const target = `TERMSRV/${host}`;
+        const username = config.username || '';
+        const password = config.password || '';
+        const domain = config.domain || '';
+        const fullUser = domain ? `${domain}\\${username}` : username;
+
+        console.log("[RDP Native] Launching mstsc.exe for", host);
+
+        try {
+            // Store credentials temporarily
+            await new Promise<void>((resolve, reject) => {
+                exec(`cmdkey /generic:"${target}" /user:"${fullUser}" /pass:"${password}"`, (err: any) => {
+                    if (err) {
+                        console.error("[RDP Native] cmdkey error:", err.message);
+                        reject(err);
+                    } else {
+                        resolve();
+                    }
+                });
+            });
+
+            // Launch mstsc.exe
+            const mstscProcess = exec(`mstsc /v:${host}:${port}`, (err: any) => {
+                if (err && err.code !== null) {
+                    console.error("[RDP Native] mstsc error:", err.message);
+                }
+            });
+
+            socket.emit("rdp-native-launched");
+
+            // Clean up credentials after mstsc closes (or after 5 seconds as safety)
+            mstscProcess.on('exit', () => {
+                exec(`cmdkey /delete:"${target}"`, () => {
+                    console.log("[RDP Native] Credentials cleaned up");
+                });
+            });
+
+            // Safety cleanup after 10 seconds if mstsc hasn't exited
+            setTimeout(() => {
+                exec(`cmdkey /delete:"${target}"`, () => { });
+            }, 10000);
+
+        } catch (err: any) {
+            socket.emit("rdp-error", "Failed to launch native RDP: " + err.message);
+        }
+    });
+
     socket.on("disconnect", () => {
         if (conn) conn.end();
         if (ftp) ftp.close();
+        clearBitmapFlush();
+        if (rdpClient) { try { rdpClient.close(); } catch (e) { } rdpClient = null; }
     });
 });
 

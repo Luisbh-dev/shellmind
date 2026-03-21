@@ -210,7 +210,7 @@ function App() {
                             </div>
 
                             {isWindows && (
-                                <div className={clsx("absolute inset-0 flex items-center justify-center bg-[#0a0a0a]", activeTab === 'rdp' ? "block" : "hidden")}>
+                                <div className={clsx("absolute inset-0 bg-[#0a0a0a]", activeTab === 'rdp' ? "block" : "hidden")}>
                                     <RdpComponent server={activeServer} />
                                 </div>
                             )}

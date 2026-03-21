@@ -7,5 +7,5 @@
     "skipLibCheck": true,
     "noEmit": true
   },
-  "include": ["server_clean.ts", "database.ts"]
+  "include": ["server.ts", "server_clean.ts", "database.ts"]
 }

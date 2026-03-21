@@ -1,4 +1,4 @@
-import { app, BrowserWindow, shell, dialog } from 'electron';
+import { app, BrowserWindow, shell } from 'electron';
 import path from 'path';
 import fs from 'fs';
 import { fork, ChildProcess } from 'child_process';
@@ -36,7 +36,7 @@ function createWindow() {
   });
 
   // Open links in default browser
-  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+  mainWindow.webContents.setWindowOpenHandler(({ url }: { url: string }) => {
       shell.openExternal(url);
       return { action: 'deny' };
   });

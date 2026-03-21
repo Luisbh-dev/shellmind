@@ -48,7 +48,7 @@ export default function FileExplorer({ server, isVisible }: FileExplorerProps) {
 
     useEffect(() => {
         setIsConnectionReady(false);
-        const newSocket = io('http://localhost:3001', { transports: ['websocket'] });
+        const newSocket = io('http://localhost:3001');
         setSocket(newSocket);
 
         newSocket.on('connect', () => {

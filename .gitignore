@@ -38,6 +38,10 @@ pids
 *.seed
 *.pid.lock
 
+# Local debug captures
+tmp-rdp/
+server_dump.txt
+
 # OS Files
 .DS_Store
 Thumbs.db
