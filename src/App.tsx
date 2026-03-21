@@ -9,6 +9,22 @@ import SettingsModal from '@/components/SettingsModal';
 import { Terminal as TerminalIcon, Monitor, Activity, FileText, MessageSquare } from 'lucide-react';
 import { clsx } from 'clsx';
 
+type TerminalIssueType = 'error' | 'warning';
+
+interface TerminalIssue {
+    id: string;
+    type: TerminalIssueType;
+    message: string;
+    details?: string;
+    timestamp: number;
+}
+
+const stripAnsiCodes = (value: string) =>
+    value.replace(/\x1B\[[0-9;?]*[ -/]*[@-~]/g, '');
+
+const normalizeTerminalText = (value: string) =>
+    stripAnsiCodes(value).replace(/\r/g, '');
+
 function App() {
     const [activeServer, setActiveServer] = useState<any>(null);
     const [activeTab, setActiveTab] = useState<'ssh' | 'rdp' | 'sftp' | 'status'>('ssh');
@@ -20,12 +36,126 @@ function App() {
 
     // Terminal History Buffer (Ref to avoid re-renders)
     const terminalHistoryRef = useRef('');
+    const terminalLineBufferRef = useRef('');
+    const [terminalIssues, setTerminalIssues] = useState<TerminalIssue[]>([]);
+    const recentTerminalIssueKeysRef = useRef<Map<string, number>>(new Map());
+    const lastTerminalIssueIdRef = useRef<string | null>(null);
+
+    const recordTerminalIssue = (type: TerminalIssueType, message: string, details?: string) => {
+        const normalizedMessage = message.trim();
+        const normalizedDetails = details?.trim();
+        const issueKey = `${type}:${normalizedMessage}:${normalizedDetails || ''}`.toLowerCase();
+        const now = Date.now();
+        const lastSeenAt = recentTerminalIssueKeysRef.current.get(issueKey) || 0;
+
+        if (now - lastSeenAt < 1200) {
+            return;
+        }
+
+        recentTerminalIssueKeysRef.current.set(issueKey, now);
+        if (recentTerminalIssueKeysRef.current.size > 50) {
+            const first = recentTerminalIssueKeysRef.current.keys().next().value;
+            if (first) {
+                recentTerminalIssueKeysRef.current.delete(first);
+            }
+        }
+
+        const entry: TerminalIssue = {
+            id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+            type,
+            message: normalizedMessage,
+            details: normalizedDetails,
+            timestamp: now
+        };
+
+        lastTerminalIssueIdRef.current = entry.id;
+        setTerminalIssues(prev => [...prev, entry].slice(-20));
+    };
+
+    const appendTerminalIssueDetails = (detailsLine: string) => {
+        const trimmedDetails = detailsLine.trim();
+        if (!trimmedDetails || !lastTerminalIssueIdRef.current) return;
+
+        setTerminalIssues(prev => {
+            if (!prev.length) return prev;
+
+            const next = [...prev];
+            const lastIndex = next.length - 1;
+            const last = next[lastIndex];
+
+            if (last.id !== lastTerminalIssueIdRef.current) {
+                return prev;
+            }
+
+            next[lastIndex] = {
+                ...last,
+                details: last.details ? `${last.details}\n${trimmedDetails}` : trimmedDetails,
+                timestamp: Date.now()
+            };
+
+            return next;
+        });
+    };
+
+    const classifyTerminalLine = (line: string): TerminalIssueType | null => {
+        const trimmed = line.trim();
+        if (!trimmed) return null;
+
+        if (/^\s*(error|fatal|exception)\b/i.test(trimmed)) return 'error';
+        if (/^(bash|sh|zsh):\s*/i.test(trimmed) && /not found|permission denied|no such file/i.test(trimmed)) return 'error';
+        if (/^(powershell|cmd|cmdlet)\b/i.test(trimmed) && /not recognized|cannot find path|access is denied|fullyqualifiederrorid|exception/i.test(trimmed)) return 'error';
+
+        if (/permission denied|operation not permitted|access denied|command not found|not recognized|no such file or directory|cannot open|cannot stat|failed|error:|fatal:|exception|refused|timed out|no route to host|connection refused|denied|no match was found|unable to find package provider|provider .* not found|could not find package provider|the term .* is not recognized|cannot find path|invalidoperationexception|commandnotfoundexception|objectnotfound|segmentation fault|broken pipe|auth failed|authentication failed|unauthorized|forbidden/i.test(trimmed)) {
+            return 'error';
+        }
+
+        if (/warning:|deprecated|already exists|skipping|unable to download|already installed|no matches found|retrying|transient|rate limit/i.test(trimmed)) {
+            return 'warning';
+        }
+
+        return null;
+    };
+
+    const isTerminalDetailLine = (line: string) => {
+        const trimmed = line.trim();
+        return /^(at line:|categoryinfo|fullyqualifiederrorid|positionalparameter|scriptstacktrace| \+| \~|at c:\\|at \/|line:\s*\d+\s+char:\s*\d+|statuscode:|stderr:|stdout:|details?:)/i.test(trimmed) || /^\+/.test(trimmed);
+    };
 
     const handleTerminalOutput = (data: string) => {
-        terminalHistoryRef.current += data;
+        const cleanOutput = normalizeTerminalText(data);
+        terminalHistoryRef.current += cleanOutput;
+        terminalLineBufferRef.current += cleanOutput;
         // Keep last 10,000 chars to avoid memory issues but have enough context
         if (terminalHistoryRef.current.length > 10000) {
             terminalHistoryRef.current = terminalHistoryRef.current.slice(-10000);
+        }
+
+        if (terminalLineBufferRef.current.length > 4000) {
+            terminalLineBufferRef.current = terminalLineBufferRef.current.slice(-4000);
+        }
+
+        const terminalLines = terminalLineBufferRef.current
+            .split(/\n/)
+            .map(line => line.trim())
+        terminalLineBufferRef.current = terminalLines.pop() || '';
+
+        for (const line of terminalLines) {
+            if (!line) continue;
+
+            if (isTerminalDetailLine(line)) {
+                appendTerminalIssueDetails(line);
+                continue;
+            }
+
+            const issueType = classifyTerminalLine(line);
+            if (issueType) {
+                recordTerminalIssue(issueType, line);
+            }
+        }
+
+        const rawIssueMatch = cleanOutput.match(/(?:^|\n)(.*?(?:permission denied|command not found|not recognized|no such file or directory|cannot find path|access denied|refused|timed out|fatal|error:|exception|authentication failed|auth failed|forbidden).*)/i);
+        if (rawIssueMatch?.[1]) {
+            recordTerminalIssue('error', rawIssueMatch[1]);
         }
     };
 
@@ -48,6 +178,10 @@ function App() {
     const handleSelectServer = (server: any) => {
         setActiveServer(server);
         terminalHistoryRef.current = '';
+        terminalLineBufferRef.current = '';
+        setTerminalIssues([]);
+        recentTerminalIssueKeysRef.current.clear();
+        lastTerminalIssueIdRef.current = null;
         setActiveTab((server.type === 'ftp' || server.type === 's3') ? 'sftp' : 'ssh');
     };
 
@@ -206,6 +340,7 @@ function App() {
                                 <TerminalComponent
                                     server={activeServer}
                                     initialCommand={statusCommand}
+                                    onOutput={handleTerminalOutput}
                                 />
                             </div>
 
@@ -238,7 +373,11 @@ function App() {
                 )}
             >
                 <div className="w-[380px] h-full absolute right-0 top-0 bottom-0">
-                    <Chat activeServer={activeServer} terminalHistory={terminalHistoryRef} />
+                    <Chat
+                        activeServer={activeServer}
+                        terminalHistory={terminalHistoryRef}
+                        terminalIssues={terminalIssues}
+                    />
                 </div>
             </aside>
 

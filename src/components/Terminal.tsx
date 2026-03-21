@@ -131,9 +131,13 @@ export default function TerminalComponent({ server, onOsDetected, onOutput, init
       socket.emit("resize", { cols: term.cols, rows: term.rows });
     });
 
-    socket.on("ssh-output", (data: string) => {
+    const emitTerminalOutput = (data: string) => {
       term.write(data);
       if (onOutput) onOutput(data);
+    };
+
+    socket.on("ssh-output", (data: string) => {
+      emitTerminalOutput(data);
 
       if (initialCommand && !initialCommandSent.current) {
           initialCommandSent.current = true;
@@ -144,7 +148,8 @@ export default function TerminalComponent({ server, onOsDetected, onOutput, init
     });
 
     socket.on("ssh-error", (err: string) => {
-      term.writeln(`\r\nError: ${err}`);
+      const message = `\r\nError: ${err}\r\n`;
+      emitTerminalOutput(message);
     });
 
     socket.on("os-detected", (os: string) => {

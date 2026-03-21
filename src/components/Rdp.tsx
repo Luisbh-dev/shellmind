@@ -505,7 +505,7 @@ negotiate security layer:i:1`.trim();
 
             <button
               disabled
-              title="Temporarily disabled in v1.7.0 while the embedded renderer is being stabilized."
+              title="Temporarily disabled in v0.1.8 while the embedded renderer is being stabilized."
               className="flex items-center justify-center gap-2 bg-zinc-900 text-zinc-500 py-2.5 rounded-md text-sm font-medium border border-zinc-800 cursor-not-allowed opacity-70"
             >
               <Plug className="w-4 h-4" />
