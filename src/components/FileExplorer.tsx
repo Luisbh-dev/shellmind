@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Folder, File, ArrowUp, Download, Upload, RefreshCw, ChevronRight, Trash2 } from 'lucide-react';
+import { Folder, File, ArrowUp, Download, Upload, RefreshCw, Trash2, FolderPlus, Pencil } from 'lucide-react';
 import { clsx } from 'clsx';
 import io, { Socket } from 'socket.io-client';
 
@@ -22,8 +22,50 @@ export default function FileExplorer({ server, isVisible }: FileExplorerProps) {
     const [socket, setSocket] = useState<Socket | null>(null);
     const [isLoading, setIsLoading] = useState(false);
     const [isConnectionReady, setIsConnectionReady] = useState(false);
+    const [createFolderOpen, setCreateFolderOpen] = useState(false);
+    const [createFolderName, setCreateFolderName] = useState('');
+    const [renameTarget, setRenameTarget] = useState<FileItem | null>(null);
+    const [renameValue, setRenameValue] = useState('');
+    const [deleteTarget, setDeleteTarget] = useState<FileItem | null>(null);
+    const operationTimeoutRef = useRef<number | null>(null);
 
     const currentPathRef = useRef(currentPath);
+
+    const normalizeFiles = (items: FileItem[]) => {
+        const seen = new Set<string>();
+        return items.filter((item) => {
+            const key = `${item.isDir ? 'dir' : 'file'}:${item.name}`;
+            if (seen.has(key)) return false;
+            seen.add(key);
+            return true;
+        });
+    };
+
+    const extractNameFromPath = (path: string) => {
+        const parts = path.split('/').filter(Boolean);
+        return parts[parts.length - 1] || path.replace(/\/+$/, '');
+    };
+
+    const clearOperationTimeout = () => {
+        if (operationTimeoutRef.current) {
+            window.clearTimeout(operationTimeoutRef.current);
+            operationTimeoutRef.current = null;
+        }
+    };
+
+    const closeCreateFolderModal = () => {
+        setCreateFolderOpen(false);
+        setCreateFolderName('');
+    };
+
+    const closeRenameModal = () => {
+        setRenameTarget(null);
+        setRenameValue('');
+    };
+
+    const closeDeleteModal = () => {
+        setDeleteTarget(null);
+    };
 
     useEffect(() => {
         currentPathRef.current = currentPath;
@@ -31,6 +73,10 @@ export default function FileExplorer({ server, isVisible }: FileExplorerProps) {
 
     useEffect(() => {
         setFiles([]);
+        closeCreateFolderModal();
+        closeRenameModal();
+        closeDeleteModal();
+        clearOperationTimeout();
         // Default to /root for Linux SSH, but / for Windows and FTP
         const defaultPath = (server.type === 'windows' || server.type === 'ftp' || server.type === 's3') ? '/' : '/root';
         setCurrentPath(defaultPath);
@@ -47,6 +93,13 @@ export default function FileExplorer({ server, isVisible }: FileExplorerProps) {
     };
 
     useEffect(() => {
+        if (!isVisible) {
+            setIsConnectionReady(false);
+            setIsLoading(false);
+            clearOperationTimeout();
+            return;
+        }
+
         setIsConnectionReady(false);
         const newSocket = io('http://localhost:3001');
         setSocket(newSocket);
@@ -81,31 +134,93 @@ export default function FileExplorer({ server, isVisible }: FileExplorerProps) {
         });
 
         newSocket.on('sftp-files', ({ path, files }: { path: string, files: FileItem[] }) => {
-            setFiles(files);
+            setFiles(normalizeFiles(files));
             setCurrentPath(path);
             setIsLoading(false);
         });
 
         newSocket.on('sftp-error', (err: string) => {
             console.error('SFTP Error:', err);
+            clearOperationTimeout();
             setIsLoading(false);
             alert('SFTP Error: ' + err);
         });
 
         newSocket.on('sftp-write-success', (path: string) => {
+            clearOperationTimeout();
             setIsLoading(false);
             newSocket.emit('sftp-list', currentPathRef.current);
+        });
+
+        newSocket.on('sftp-mkdir-success', (createdPath: string) => {
+            clearOperationTimeout();
+            setIsLoading(false);
+            closeCreateFolderModal();
+            const createdName = extractNameFromPath(createdPath || '');
+            if (createdName) {
+                setFiles((prev) => normalizeFiles([
+                    {
+                        name: createdName,
+                        isDir: true,
+                        size: 0,
+                        mtime: Math.floor(Date.now() / 1000),
+                        permissions: 0
+                    },
+                    ...prev
+                ]));
+            }
+            window.setTimeout(() => {
+                newSocket.emit('sftp-list', currentPathRef.current);
+            }, 150);
+        });
+
+        newSocket.on('sftp-mkdir-error', (err: string) => {
+            clearOperationTimeout();
+            setIsLoading(false);
+            alert('SFTP Error: ' + err);
+        });
+
+        newSocket.on('sftp-rename-success', ({ oldName, newName, isDir }: { oldName: string, newName: string, isDir: boolean }) => {
+            clearOperationTimeout();
+            setIsLoading(false);
+            closeRenameModal();
+            if (oldName && newName) {
+                setFiles((prev) => normalizeFiles(prev.map((item) => {
+                    if (item.name === oldName && item.isDir === isDir) {
+                        return { ...item, name: newName };
+                    }
+                    return item;
+                })));
+            }
+            window.setTimeout(() => {
+                newSocket.emit('sftp-list', currentPathRef.current);
+            }, 150);
+        });
+
+        newSocket.on('sftp-rename-error', (err: string) => {
+            clearOperationTimeout();
+            setIsLoading(false);
+            alert('SFTP Error: ' + err);
         });
 
         newSocket.on('sftp-delete-success', (path: string) => {
+            clearOperationTimeout();
             setIsLoading(false);
+            closeDeleteModal();
             newSocket.emit('sftp-list', currentPathRef.current);
         });
 
+        newSocket.on('sftp-delete-error', (err: string) => {
+            clearOperationTimeout();
+            setIsLoading(false);
+            alert('SFTP Error: ' + err);
+        });
+
         return () => {
+            clearOperationTimeout();
             newSocket.disconnect();
         };
-    }, [server]);
+    }, [server, isVisible]);
 
 
     useEffect(() => {
@@ -163,20 +278,99 @@ export default function FileExplorer({ server, isVisible }: FileExplorerProps) {
 
     const handleDelete = (file: FileItem) => {
         if (!socket) return;
-        if (!window.confirm(`Are you sure you want to delete ${file.name}?`)) return;
+        closeCreateFolderModal();
+        closeRenameModal();
+        setDeleteTarget(file);
+    };
+
+    const submitDelete = () => {
+        if (!socket || !deleteTarget) return;
 
         setIsLoading(true);
+        clearOperationTimeout();
+        operationTimeoutRef.current = window.setTimeout(() => {
+            setIsLoading(false);
+            alert('Deleting took too long. Please try again.');
+        }, 8000);
+
         const separator = currentPath.endsWith('/') ? '' : '/';
-        const fullPath = `${currentPath}${separator}${file.name}`;
+        const fullPath = `${currentPath}${separator}${deleteTarget.name}`;
 
         socket.emit('sftp-delete', {
             path: fullPath,
-            isDir: file.isDir
+            isDir: deleteTarget.isDir
+        });
+    };
+
+    const openCreateFolderModal = () => {
+        closeRenameModal();
+        closeDeleteModal();
+        setCreateFolderName('');
+        setCreateFolderOpen(true);
+    };
+
+    const submitCreateFolder = () => {
+        if (!socket) return;
+
+        const trimmedName = createFolderName.trim();
+        if (!trimmedName) return;
+        if (/[\\/]/.test(trimmedName)) {
+            alert('Folder names cannot contain slashes.');
+            return;
+        }
+
+        setIsLoading(true);
+        clearOperationTimeout();
+        operationTimeoutRef.current = window.setTimeout(() => {
+            setIsLoading(false);
+            alert('Creating the folder took too long. Please try again.');
+        }, 8000);
+
+        socket.emit('sftp-mkdir', {
+            parentPath: currentPathRef.current,
+            name: trimmedName
+        });
+    };
+
+    const openRenameModal = (file: FileItem) => {
+        closeCreateFolderModal();
+        closeDeleteModal();
+        setRenameTarget(file);
+        setRenameValue(file.name);
+    };
+
+    const submitRename = () => {
+        if (!socket || !renameTarget) return;
+
+        const trimmedName = renameValue.trim();
+        if (!trimmedName) return;
+        if (/[\\/]/.test(trimmedName)) {
+            alert('Names cannot contain slashes.');
+            return;
+        }
+
+        if (trimmedName === renameTarget.name) {
+            closeRenameModal();
+            return;
+        }
+
+        setIsLoading(true);
+        clearOperationTimeout();
+        operationTimeoutRef.current = window.setTimeout(() => {
+            setIsLoading(false);
+            alert('Renaming took too long. Please try again.');
+        }, 8000);
+
+        socket.emit('sftp-rename', {
+            parentPath: currentPathRef.current,
+            oldName: renameTarget.name,
+            newName: trimmedName,
+            isDir: renameTarget.isDir
         });
     };
 
     return (
-        <div className="h-full flex flex-col bg-[#0a0a0a] text-zinc-300 font-sans">
+        <div className="relative h-full flex flex-col bg-[#0a0a0a] text-zinc-300 font-sans">
             <div className="h-10 border-b border-zinc-800 flex items-center px-4 gap-2 bg-zinc-900/30">
                 <button onClick={handleUp} className="p-1.5 hover:bg-zinc-800 rounded text-zinc-400" title="Go Up">
                     <ArrowUp className="w-4 h-4" />
@@ -200,6 +394,15 @@ export default function FileExplorer({ server, isVisible }: FileExplorerProps) {
                 </label>
 
                 <button
+                    onClick={openCreateFolderModal}
+                    className="p-1.5 hover:bg-zinc-800 rounded text-zinc-400 disabled:opacity-40 disabled:cursor-not-allowed"
+                    title="Create Folder"
+                    disabled={!socket || isLoading}
+                >
+                    <FolderPlus className="w-4 h-4" />
+                </button>
+
+                <button
                     onClick={() => handleNavigate(currentPath)}
                     className={clsx("p-1.5 hover:bg-zinc-800 rounded text-zinc-400", isLoading && "animate-spin")}
                     title="Refresh"
@@ -221,9 +424,9 @@ export default function FileExplorer({ server, isVisible }: FileExplorerProps) {
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-zinc-800/50">
-                        {files.map((file) => (
+                        {files.map((file, index) => (
                             <tr
-                                key={file.name}
+                                key={`${file.isDir ? 'dir' : 'file'}:${file.name}:${index}`}
                                 className="hover:bg-zinc-800/30 cursor-pointer group transition-colors"
                                 onDoubleClick={() => file.isDir ? handleNavigate(currentPath === '/' ? `/${file.name}` : `${currentPath}/${file.name}`) : handleDownload(file)}
                             >
@@ -253,6 +456,13 @@ export default function FileExplorer({ server, isVisible }: FileExplorerProps) {
                                         </button>
                                     )}
                                     <button
+                                        onClick={(e) => { e.stopPropagation(); openRenameModal(file); }}
+                                        className="p-1 hover:bg-zinc-700 rounded text-zinc-500 hover:text-zinc-300"
+                                        title="Rename"
+                                    >
+                                        <Pencil className="w-3 h-3" />
+                                    </button>
+                                    <button
                                         onClick={(e) => { e.stopPropagation(); handleDelete(file); }}
                                         className="p-1 hover:bg-red-900/30 rounded text-zinc-500 hover:text-red-400"
                                         title="Delete"
@@ -265,6 +475,128 @@ export default function FileExplorer({ server, isVisible }: FileExplorerProps) {
                     </tbody>
                 </table>
             </div>
+
+            {createFolderOpen && (
+                <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/65 backdrop-blur-[1px] px-4">
+                    <form
+                        onSubmit={(e) => {
+                            e.preventDefault();
+                            submitCreateFolder();
+                        }}
+                        className="w-full max-w-sm rounded-2xl border border-zinc-700 bg-zinc-950 shadow-2xl shadow-black/40"
+                    >
+                        <div className="px-4 py-3 border-b border-zinc-800">
+                            <div className="text-sm font-semibold text-zinc-100">Create folder</div>
+                            <div className="text-xs text-zinc-500 mt-1">
+                                Folder will be created inside {currentPathRef.current}
+                            </div>
+                        </div>
+                        <div className="p-4 space-y-4">
+                            <input
+                                autoFocus
+                                value={createFolderName}
+                                onChange={(e) => setCreateFolderName(e.target.value)}
+                                placeholder="Folder name"
+                                className="w-full rounded-lg border border-zinc-700 bg-black px-3 py-2 text-sm text-zinc-100 outline-none focus:border-blue-500"
+                            />
+                            <div className="flex justify-end gap-2">
+                                <button
+                                    type="button"
+                                    onClick={closeCreateFolderModal}
+                                    className="px-3 py-2 rounded-lg border border-zinc-700 text-sm text-zinc-300 hover:bg-zinc-800"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    type="submit"
+                                    disabled={!createFolderName.trim()}
+                                    className="px-3 py-2 rounded-lg bg-blue-600 text-sm text-white disabled:opacity-40 disabled:cursor-not-allowed hover:bg-blue-500"
+                                >
+                                    Create
+                                </button>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+            )}
+
+            {renameTarget && (
+                <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/65 backdrop-blur-[1px] px-4">
+                    <form
+                        onSubmit={(e) => {
+                            e.preventDefault();
+                            submitRename();
+                        }}
+                        className="w-full max-w-sm rounded-2xl border border-zinc-700 bg-zinc-950 shadow-2xl shadow-black/40"
+                    >
+                        <div className="px-4 py-3 border-b border-zinc-800">
+                            <div className="text-sm font-semibold text-zinc-100">Rename {renameTarget.isDir ? 'folder' : 'file'}</div>
+                            <div className="text-xs text-zinc-500 mt-1">
+                                Current name: {renameTarget.name}
+                            </div>
+                        </div>
+                        <div className="p-4 space-y-4">
+                            <input
+                                autoFocus
+                                value={renameValue}
+                                onChange={(e) => setRenameValue(e.target.value)}
+                                placeholder="New name"
+                                className="w-full rounded-lg border border-zinc-700 bg-black px-3 py-2 text-sm text-zinc-100 outline-none focus:border-blue-500"
+                            />
+                            <div className="flex justify-end gap-2">
+                                <button
+                                    type="button"
+                                    onClick={closeRenameModal}
+                                    className="px-3 py-2 rounded-lg border border-zinc-700 text-sm text-zinc-300 hover:bg-zinc-800"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    type="submit"
+                                    disabled={!renameValue.trim()}
+                                    className="px-3 py-2 rounded-lg bg-blue-600 text-sm text-white disabled:opacity-40 disabled:cursor-not-allowed hover:bg-blue-500"
+                                >
+                                    Rename
+                                </button>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+            )}
+
+            {deleteTarget && (
+                <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/65 backdrop-blur-[1px] px-4">
+                    <div className="w-full max-w-sm rounded-2xl border border-zinc-700 bg-zinc-950 shadow-2xl shadow-black/40">
+                        <div className="px-4 py-3 border-b border-zinc-800">
+                            <div className="text-sm font-semibold text-zinc-100">Delete {deleteTarget.isDir ? 'folder' : 'file'}</div>
+                            <div className="text-xs text-zinc-500 mt-1">
+                                {deleteTarget.name}
+                            </div>
+                        </div>
+                        <div className="p-4 space-y-4">
+                            <div className="rounded-lg border border-red-500/20 bg-red-500/10 px-3 py-2 text-sm text-red-100">
+                                This action cannot be undone.
+                            </div>
+                            <div className="flex justify-end gap-2">
+                                <button
+                                    type="button"
+                                    onClick={closeDeleteModal}
+                                    className="px-3 py-2 rounded-lg border border-zinc-700 text-sm text-zinc-300 hover:bg-zinc-800"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={submitDelete}
+                                    className="px-3 py-2 rounded-lg bg-red-500 text-sm text-white font-medium hover:bg-red-400"
+                                >
+                                    Delete
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

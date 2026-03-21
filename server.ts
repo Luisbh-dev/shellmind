@@ -4,7 +4,7 @@ import { Server } from "socket.io";
 import { Client } from "ssh2";
 const rdp = require("@electerm/rdpjs");
 import { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold } from "@google/generative-ai";
-import { S3Client, ListObjectsV2Command, GetObjectCommand, PutObjectCommand, DeleteObjectCommand, DeleteObjectsCommand } from "@aws-sdk/client-s3";
+import { S3Client, ListObjectsV2Command, GetObjectCommand, PutObjectCommand, DeleteObjectCommand, DeleteObjectsCommand, CopyObjectCommand } from "@aws-sdk/client-s3";
 import cors from "cors";
 import dotenv from "dotenv";
 import db from "./database";
@@ -380,6 +380,35 @@ function normalizeFtpPath(path: string): string {
     return ftpPath;
 }
 
+function joinRemotePath(parentPath: string, childName: string): string {
+    const cleanParent = (parentPath || '').trim().replace(/\/+$/, '');
+    const cleanChild = (childName || '').trim().replace(/^\/+/, '');
+
+    if (!cleanChild) return cleanParent || '/';
+    if (!cleanParent || cleanParent === '/') return `/${cleanChild}`;
+    return `${cleanParent}/${cleanChild}`;
+}
+
+function buildS3FolderKey(parentPath: string, childName: string): string {
+    let cleanParent = (parentPath || '').trim().replace(/\/+$/, '');
+    let cleanChild = (childName || '').trim().replace(/^\/+|\/+$/g, '');
+
+    if (cleanParent.startsWith('/')) cleanParent = cleanParent.substring(1);
+    if (!cleanChild) return cleanParent ? `${cleanParent}/` : '';
+
+    const key = cleanParent ? `${cleanParent}/${cleanChild}` : cleanChild;
+    return key.endsWith('/') ? key : `${key}/`;
+}
+
+function buildS3ObjectKey(parentPath: string, childName: string): string {
+    const fullPath = joinRemotePath(parentPath, childName);
+    return fullPath.startsWith('/') ? fullPath.substring(1) : fullPath;
+}
+
+function encodeS3CopySource(bucket: string, key: string): string {
+    return `${bucket}/${encodeURIComponent(key).replace(/%2F/g, '/')}`;
+}
+
 // Socket.io Handling
 io.on("connection", (socket) => {
     console.log("Client connected", socket.id);
@@ -650,12 +679,14 @@ io.on("connection", (socket) => {
                 const response = await s3Client.send(command);
 
                 const files: any[] = [];
+                const seen = new Set<string>();
 
                 // CommonPrefixes are directories
                 if (response.CommonPrefixes) {
                     response.CommonPrefixes.forEach((p) => {
                         const name = p.Prefix?.split('/').filter(x => x).pop();
-                        if (name) {
+                        if (name && !seen.has(`dir:${name}`)) {
+                            seen.add(`dir:${name}`);
                             files.push({
                                 name: name,
                                 isDir: true,
@@ -673,11 +704,16 @@ io.on("connection", (socket) => {
                         // Skip the folder object itself if it exists (key ending in / equal to prefix)
                         if (c.Key === prefix) return;
 
-                        const name = c.Key?.split('/').pop();
+                        const isFolderMarker = !!c.Key?.endsWith('/');
+                        const cleanKey = isFolderMarker ? c.Key?.replace(/\/$/, '') : c.Key;
+                        const name = cleanKey?.split('/').filter(x => x).pop();
                         if (name) {
+                            const dedupeKey = `${isFolderMarker ? 'dir' : 'file'}:${name}`;
+                            if (seen.has(dedupeKey)) return;
+                            seen.add(dedupeKey);
                             files.push({
                                 name: name,
-                                isDir: false,
+                                isDir: isFolderMarker,
                                 size: c.Size || 0,
                                 mtime: c.LastModified ? new Date(c.LastModified).getTime() / 1000 : 0,
                                 permissions: 0
@@ -872,6 +908,205 @@ io.on("connection", (socket) => {
         sftp.writeFile(path, buffer, (err: any) => {
             if (err) return socket.emit("sftp-error", "Write error: " + err.message);
             socket.emit("sftp-write-success", path);
+        });
+    });
+
+    socket.on("sftp-mkdir", async ({ parentPath, name }) => {
+        const fullPath = joinRemotePath(parentPath, name);
+        console.log(`[Mkdir] Request parent='${parentPath}' name='${name}' => '${fullPath}' via ${connectionType}`);
+
+        if (connectionType === 's3') {
+            if (!s3Client) return socket.emit("sftp-error", "S3 not initialized");
+
+            try {
+                const key = buildS3FolderKey(parentPath, name);
+                if (!key) throw new Error("Usage: mkdir <folder-name>");
+
+                const command = new PutObjectCommand({
+                    Bucket: s3Bucket,
+                    Key: key,
+                    Body: Buffer.alloc(0)
+                });
+
+                await s3Client.send(command);
+                socket.emit("sftp-mkdir-success", fullPath);
+                socket.emit("sftp-write-success", fullPath);
+            } catch (err: any) {
+                console.error("S3 Mkdir Error:", err);
+                socket.emit("sftp-mkdir-error", "S3 Mkdir Error: " + err.message);
+                socket.emit("sftp-error", "S3 Mkdir Error: " + err.message);
+            }
+            return;
+        }
+
+        if (connectionType === 'ftp') {
+            if (!ftp || ftp.closed) return socket.emit("sftp-error", "FTP not initialized");
+
+            try {
+                const ftpParent = normalizeFtpPath(parentPath || '/').trim() || '/';
+                const folderName = (name || '').trim();
+                if (!folderName) throw new Error("Usage: mkdir <path>");
+
+                const originalCwd = await ftp.pwd();
+                try {
+                    await ftp.cd(ftpParent);
+                    await ftp.ensureDir(folderName);
+                } finally {
+                    if (originalCwd) {
+                        await ftp.cd(originalCwd);
+                    }
+                }
+
+                socket.emit("sftp-mkdir-success", fullPath);
+                socket.emit("sftp-write-success", fullPath);
+            } catch (err: any) {
+                socket.emit("sftp-mkdir-error", "FTP Mkdir Error: " + err.message);
+                socket.emit("sftp-error", "FTP Mkdir Error: " + err.message);
+            }
+            return;
+        }
+
+        if (!sftp) {
+            const msg = connectionError ? `SFTP Error: ${connectionError}` : "Unable to establish file connection. Please ensure the server is reachable.";
+            return socket.emit("sftp-error", msg);
+        }
+
+        sftp.mkdir(fullPath, { mode: 0o755 }, (err: any) => {
+            if (err) {
+                socket.emit("sftp-mkdir-error", "Mkdir error: " + err.message);
+                return socket.emit("sftp-error", "Mkdir error: " + err.message);
+            }
+            socket.emit("sftp-mkdir-success", fullPath);
+            socket.emit("sftp-write-success", fullPath);
+        });
+    });
+
+    socket.on("sftp-rename", async ({ parentPath, oldName, newName, isDir }) => {
+        const oldFullPath = joinRemotePath(parentPath, oldName);
+        const newFullPath = joinRemotePath(parentPath, newName);
+        console.log(`[Rename] Request parent='${parentPath}' old='${oldName}' new='${newName}' => '${oldFullPath}' -> '${newFullPath}' via ${connectionType}`);
+
+        if (oldFullPath === newFullPath) {
+            return socket.emit("sftp-rename-error", "Nothing changed.");
+        }
+
+        if (connectionType === 's3') {
+            if (!s3Client) return socket.emit("sftp-error", "S3 not initialized");
+            const s3 = s3Client;
+
+            try {
+                if (isDir) {
+                    const sourcePrefix = buildS3FolderKey(parentPath, oldName);
+                    const destPrefix = buildS3FolderKey(parentPath, newName);
+
+                    if (!sourcePrefix || !destPrefix) throw new Error("Usage: rename <name>");
+
+                    const listCmd = new ListObjectsV2Command({
+                        Bucket: s3Bucket,
+                        Prefix: sourcePrefix
+                    });
+
+                    const response = await s3.send(listCmd);
+                    const objects = response.Contents || [];
+                    if (!objects.length) {
+                        throw new Error("Folder not found");
+                    }
+
+                    await Promise.all(objects.map(async (obj) => {
+                        if (!obj.Key) return;
+                        const suffix = obj.Key.substring(sourcePrefix.length);
+                        const destKey = `${destPrefix}${suffix}`;
+                        const copyCmd = new CopyObjectCommand({
+                            Bucket: s3Bucket,
+                            CopySource: encodeS3CopySource(s3Bucket, obj.Key),
+                            Key: destKey
+                        });
+                        await s3.send(copyCmd);
+                    }));
+
+                    await s3.send(new DeleteObjectsCommand({
+                        Bucket: s3Bucket,
+                        Delete: {
+                            Objects: objects
+                                .filter((obj) => !!obj.Key)
+                                .map((obj) => ({ Key: obj.Key as string }))
+                        }
+                    }));
+                } else {
+                    const sourceKey = buildS3ObjectKey(parentPath, oldName);
+                    const destKey = buildS3ObjectKey(parentPath, newName);
+
+                    if (!sourceKey || !destKey) throw new Error("Usage: rename <name>");
+
+                    await s3.send(new CopyObjectCommand({
+                        Bucket: s3Bucket,
+                        CopySource: encodeS3CopySource(s3Bucket, sourceKey),
+                        Key: destKey
+                    }));
+
+                    await s3.send(new DeleteObjectCommand({
+                        Bucket: s3Bucket,
+                        Key: sourceKey
+                    }));
+                }
+
+                socket.emit("sftp-rename-success", {
+                    parentPath,
+                    oldName,
+                    newName,
+                    isDir,
+                    oldPath: oldFullPath,
+                    newPath: newFullPath
+                });
+            } catch (err: any) {
+                console.error("S3 Rename Error:", err);
+                socket.emit("sftp-rename-error", "S3 Rename Error: " + err.message);
+                socket.emit("sftp-error", "S3 Rename Error: " + err.message);
+            }
+            return;
+        }
+
+        if (connectionType === 'ftp') {
+            if (!ftp || ftp.closed) return socket.emit("sftp-error", "FTP not initialized");
+
+            try {
+                const sourcePath = normalizeFtpPath(oldFullPath);
+                const destinationPath = normalizeFtpPath(newFullPath);
+                await ftp.rename(sourcePath, destinationPath);
+
+                socket.emit("sftp-rename-success", {
+                    parentPath,
+                    oldName,
+                    newName,
+                    isDir,
+                    oldPath: oldFullPath,
+                    newPath: newFullPath
+                });
+            } catch (err: any) {
+                socket.emit("sftp-rename-error", "FTP Rename Error: " + err.message);
+                socket.emit("sftp-error", "FTP Rename Error: " + err.message);
+            }
+            return;
+        }
+
+        if (!sftp) {
+            const msg = connectionError ? `SFTP Error: ${connectionError}` : "Unable to establish file connection. Please ensure the server is reachable.";
+            return socket.emit("sftp-error", msg);
+        }
+
+        sftp.rename(oldFullPath, newFullPath, (err: any) => {
+            if (err) {
+                socket.emit("sftp-rename-error", "Rename error: " + err.message);
+                return socket.emit("sftp-error", "Rename error: " + err.message);
+            }
+            socket.emit("sftp-rename-success", {
+                parentPath,
+                oldName,
+                newName,
+                isDir,
+                oldPath: oldFullPath,
+                newPath: newFullPath
+            });
         });
     });
 

@@ -62,6 +62,7 @@ export default function Chat({ activeServer, terminalHistory, terminalIssues }: 
     const [fixItLoading, setFixItLoading] = useState(false);
     const [fixItSuggestion, setFixItSuggestion] = useState("");
     const [issueToast, setIssueToast] = useState<TerminalIssue | null>(null);
+    const [autoRunConfirmOpen, setAutoRunConfirmOpen] = useState(false);
 
     const messagesContainerRef = useRef<HTMLDivElement>(null);
     const pendingFixItRequestRef = useRef(0);
@@ -125,12 +126,19 @@ export default function Chat({ activeServer, terminalHistory, terminalIssues }: 
 
     const toggleAutoRun = () => {
         if (!isAutoRun) {
-            if (confirm("WARNING: Auto-Run mode will execute commands suggested by the AI immediately.\n\nAre you sure you want to enable this?")) {
-                setIsAutoRun(true);
-            }
+            setAutoRunConfirmOpen(true);
         } else {
             setIsAutoRun(false);
         }
+    };
+
+    const confirmEnableAutoRun = () => {
+        setIsAutoRun(true);
+        setAutoRunConfirmOpen(false);
+    };
+
+    const cancelEnableAutoRun = () => {
+        setAutoRunConfirmOpen(false);
     };
 
     useEffect(() => {
@@ -399,6 +407,27 @@ export default function Chat({ activeServer, terminalHistory, terminalIssues }: 
         }
     };
 
+    useEffect(() => {
+        const handleTerminalIssueAction = (event: Event) => {
+            const detail = (event as CustomEvent<{ action?: "analyze" | "fix" }>).detail;
+            if (!detail?.action) return;
+
+            if (detail.action === "analyze") {
+                setInput(diagnosticPromptValue);
+                return;
+            }
+
+            if (detail.action === "fix") {
+                void requestFixIt();
+            }
+        };
+
+        window.addEventListener("terminal-issue-action", handleTerminalIssueAction as EventListener);
+        return () => {
+            window.removeEventListener("terminal-issue-action", handleTerminalIssueAction as EventListener);
+        };
+    }, [diagnosticPromptValue, latestIssue?.id, requestFixIt]);
+
     const isElectron = navigator.userAgent.toLowerCase().includes(" electron/");
 
     return (
@@ -643,11 +672,45 @@ export default function Chat({ activeServer, terminalHistory, terminalIssues }: 
                     </div>
                 )}
 
-                <div className="flex justify-between items-center mt-2 px-1">
+            <div className="flex justify-between items-center mt-2 px-1">
                     <span className="text-[10px] text-zinc-600">Context: {activeServer ? "Active" : "None"}</span>
                     <span className="text-[10px] text-zinc-700">Enter to send, Shift+Enter for new line</span>
                 </div>
             </div>
+
+            {autoRunConfirmOpen && (
+                <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/65 backdrop-blur-[1px] px-4">
+                    <div className="w-full max-w-sm rounded-2xl border border-zinc-700 bg-zinc-950 shadow-2xl shadow-black/40">
+                        <div className="px-4 py-3 border-b border-zinc-800">
+                            <div className="text-sm font-semibold text-zinc-100">Enable Auto-Run</div>
+                            <div className="text-xs text-zinc-500 mt-1">
+                                AI suggestions will be executed automatically when they contain commands.
+                            </div>
+                        </div>
+                        <div className="p-4 space-y-4">
+                            <div className="rounded-lg border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-sm text-amber-100">
+                                This can run commands on the active server without an extra confirmation step.
+                            </div>
+                            <div className="flex justify-end gap-2">
+                                <button
+                                    type="button"
+                                    onClick={cancelEnableAutoRun}
+                                    className="px-3 py-2 rounded-lg border border-zinc-700 text-sm text-zinc-300 hover:bg-zinc-800"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={confirmEnableAutoRun}
+                                    className="px-3 py-2 rounded-lg bg-amber-500 text-sm text-black font-medium hover:bg-amber-400"
+                                >
+                                    Enable
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

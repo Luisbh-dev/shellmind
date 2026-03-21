@@ -182,6 +182,7 @@ function App() {
         setTerminalIssues([]);
         recentTerminalIssueKeysRef.current.clear();
         lastTerminalIssueIdRef.current = null;
+        setIsChatOpen(server.type !== 's3');
         setActiveTab((server.type === 'ftp' || server.type === 's3') ? 'sftp' : 'ssh');
     };
 
@@ -207,6 +208,15 @@ function App() {
     };
 
     const isWindows = activeServer?.type === 'windows';
+    const isS3Connection = activeServer?.type === 's3';
+    const chatEnabled = !isS3Connection;
+    const shouldShowChat = chatEnabled && isChatOpen;
+
+    useEffect(() => {
+        if (isS3Connection && isChatOpen) {
+            setIsChatOpen(false);
+        }
+    }, [isS3Connection, isChatOpen]);
 
     // Detect Electron
     const isElectron = navigator.userAgent.toLowerCase().includes(' electron/');
@@ -218,7 +228,7 @@ function App() {
     return (
         <div className={clsx(
             "h-screen w-screen bg-black text-zinc-300 grid overflow-hidden font-sans transition-all duration-300 ease-in-out",
-            isChatOpen ? "grid-cols-[260px_1fr_380px]" : "grid-cols-[260px_1fr_0px]"
+            shouldShowChat ? "grid-cols-[260px_1fr_380px]" : "grid-cols-[260px_1fr_0px]"
         )}>
             {/* Column 1: Sidebar */}
             <aside className="border-r border-zinc-800 bg-zinc-900/50 flex flex-col h-full overflow-hidden min-h-0">
@@ -312,12 +322,23 @@ function App() {
 
                         {/* Chat Toggle Button */}
                         <button
-                            onClick={() => setIsChatOpen(!isChatOpen)}
+                            onClick={() => {
+                                if (chatEnabled) {
+                                    setIsChatOpen(!isChatOpen);
+                                }
+                            }}
+                            disabled={!chatEnabled}
                             className={clsx(
-                                "p-1.5 rounded hover:bg-zinc-800 transition-colors",
-                                isChatOpen ? "text-teal-500" : "text-zinc-500"
+                                "p-1.5 rounded transition-colors",
+                                chatEnabled
+                                    ? (isChatOpen ? "text-teal-500 hover:bg-zinc-800" : "text-zinc-500 hover:bg-zinc-800")
+                                    : "text-zinc-700 opacity-50 cursor-not-allowed"
                             )}
-                            title={isChatOpen ? "Close Chat" : "Open Chat"}
+                            title={
+                                chatEnabled
+                                    ? (isChatOpen ? "Close Chat" : "Open Chat")
+                                    : "AI Assistant disabled for S3"
+                            }
                         >
                             <MessageSquare className="w-4 h-4" />
                         </button>
@@ -328,21 +349,27 @@ function App() {
                 <div className="flex-1 relative bg-[#0a0a0a] min-h-0 overflow-hidden">
                     {activeServer ? (
                         <>
-                            <div className={clsx("absolute inset-0", activeTab === 'ssh' ? "block" : "hidden")}>
-                                <TerminalComponent
+                            {activeTab === 'ssh' && (
+                                <div className="absolute inset-0">
+                                    <TerminalComponent
                                     server={activeServer}
                                     onOsDetected={handleOsDetected}
                                     onOutput={handleTerminalOutput}
+                                    isActive={activeTab === 'ssh'}
                                 />
                             </div>
+                        )}
 
-                            <div className={clsx("absolute inset-0", activeTab === 'status' ? "block" : "hidden")}>
-                                <TerminalComponent
+                            {activeTab === 'status' && (
+                                <div className="absolute inset-0">
+                                    <TerminalComponent
                                     server={activeServer}
                                     initialCommand={statusCommand}
                                     onOutput={handleTerminalOutput}
+                                    isActive={activeTab === 'status'}
                                 />
                             </div>
+                        )}
 
                             {isWindows && (
                                 <div className={clsx("absolute inset-0 bg-[#0a0a0a]", activeTab === 'rdp' ? "block" : "hidden")}>
@@ -366,20 +393,22 @@ function App() {
             </main>
 
             {/* Column 3: AI Chat */}
-            <aside
-                className={clsx(
-                    "border-l border-zinc-800 bg-zinc-900/30 flex flex-col h-full overflow-hidden min-h-0 transition-all duration-300 relative",
-                    isChatOpen ? "w-[380px]" : "w-0 border-l-0"
-                )}
-            >
-                <div className="w-[380px] h-full absolute right-0 top-0 bottom-0">
-                    <Chat
-                        activeServer={activeServer}
-                        terminalHistory={terminalHistoryRef}
-                        terminalIssues={terminalIssues}
-                    />
-                </div>
-            </aside>
+            {chatEnabled && (
+                <aside
+                    className={clsx(
+                        "border-l border-zinc-800 bg-zinc-900/30 flex flex-col h-full overflow-hidden min-h-0 transition-all duration-300 relative",
+                        isChatOpen ? "w-[380px]" : "w-0 border-l-0"
+                    )}
+                >
+                    <div className="w-[380px] h-full absolute right-0 top-0 bottom-0">
+                        <Chat
+                            activeServer={activeServer}
+                            terminalHistory={terminalHistoryRef}
+                            terminalIssues={terminalIssues}
+                        />
+                    </div>
+                </aside>
+            )}
 
             <AddServerModal
                 isOpen={isAddServerOpen}

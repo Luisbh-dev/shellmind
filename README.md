@@ -1,46 +1,47 @@
 # ShellMind
 
-> **Version 0.1.8**
+> **Version 0.1.9**
 
-**Your AI-powered system administration companion.**
+ShellMind is a self-hosted server workspace that brings terminal access, file management, remote desktop, and AI assistance into one interface.
 
-ShellMind is a self-hosted server management dashboard that combines SSH, PowerShell, FTP, SFTP, S3, RDP, and AI assistance in one place. It helps you inspect systems, run commands, and troubleshoot failures faster from a single interface.
+It is built for fast day-to-day operations across SSH, PowerShell, FTP, SFTP, and S3-compatible storage, while keeping the workflow local and focused.
 
-## Key Features
+## What is new in 0.1.9
 
-### AI Terminal Diagnostics
-- Detects SSH terminal failures from live terminal output and backend error events.
-- Surfaces the latest issue in the chat with a small alert banner.
-- Includes `Analyze` to prompt the AI with the last failure context.
-- Includes `Fix it` to request the exact command needed to resolve the issue.
-- Reuses recent terminal history so the AI gets the full context, not just one line.
+- Better UX across the file explorer and AI assistant flows.
+- Create folders from a modal, with protocol-aware handling for SSH, FTP, and S3.
+- Rename files and folders directly from the file browser.
+- Improved automatic SSH error detection from terminal output.
+- Cleaner AI-assisted troubleshooting with `Analyze` and `Fix it`.
+- Safer Auto-Run confirmation in the chat.
+
+## Core features
 
 ### AI Assistant
-- Chat with the assistant about the active server and recent terminal activity.
-- Supports code block rendering with one-click `Run`.
-- `Auto-Run` can execute generated commands and feed the output back for follow-up analysis.
-- Model selection is available from the assistant header.
+- Chat with the active server in context.
+- Send terminal code blocks to the shell with one click.
+- Enable Auto-Run for trusted command execution.
+- Use `Analyze` and `Fix it` when SSH failures are detected.
 
-### Multi-Protocol Connectivity
+### Terminal and monitoring
 - SSH terminal for Linux and Unix-like servers.
-- PowerShell / OpenSSH terminal support for Windows servers.
-- FTP support for legacy servers.
-- SFTP file explorer for browsing, uploading, downloading, and deleting files.
-- S3 bucket browsing for S3-compatible storage.
+- PowerShell and SSH support for Windows servers.
+- Live status tab for system checks and diagnostics.
+- Terminal output is scanned for common failure patterns and surfaced in the assistant.
+
+### File management
+- Browse, upload, download, delete, rename, and create folders.
+- SFTP and FTP support for remote file operations.
+- S3 bucket browsing with folder marker support.
+- AI assistant is disabled for S3 to keep the experience focused.
+
+### Remote access
 - Native RDP launch for Windows servers.
+- Unified connection switching from the sidebar.
 
-### Real-Time Monitoring
-- Dedicated `Status` tab for live system checks.
-- Linux status uses `htop` when available.
-- Windows status shows CPU, memory, disk, uptime, and top processes.
+## Getting started
 
-### Privacy and Security
-- Credentials are stored locally in SQLite.
-- The app is self-hosted and does not depend on a remote control plane for server access.
-
-## Getting Started
-
-### Prerequisites
+### Requirements
 - Node.js
 - An AI API key
 
@@ -60,7 +61,7 @@ Create a `.env` file in the project root:
 GEMINI_API_KEY=your_api_key_here
 ```
 
-You can also configure the API key from the app settings if you prefer.
+You can also configure the API key from the app settings.
 
 ### Run
 
@@ -68,23 +69,17 @@ You can also configure the API key from the app settings if you prefer.
 npm start
 ```
 
-This starts the web UI and the backend server together.
+This starts the frontend and backend together.
 
-## What Changed in 0.1.8
+## Release notes
 
-This release follows `0.1.7`.
+### 0.1.9
+- UI/UX polish across the assistant and file explorer.
+- Folder creation and rename flows added to the file browser.
+- Automatic SSH error detection improved and surfaced in the assistant.
 
-Previous release note: `0.1.7` was the last stable baseline before the SSH diagnostics and Fix it workflow were added.
-
-- Added SSH failure detection from terminal and backend error streams.
-- Added the `Last SSH issue` panel in the chat.
-- Added `Analyze` and `Fix it` workflows for faster troubleshooting.
-- Added issue toast notifications when a new terminal failure is detected.
-- Improved terminal context passed to the AI assistant.
-
-## Contributing
-
-Contributions are welcome. Please fork the repository and open a pull request.
+### 0.1.8
+- SSH issue detection and `Fix it` workflow introduced.
 
 ## License
 
