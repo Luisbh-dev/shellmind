@@ -8,7 +8,7 @@ import { WebglAddon } from "xterm-addon-webgl";
 import { SearchAddon } from "@xterm/addon-search";
 import "xterm/css/xterm.css";
 import io, { Socket } from "socket.io-client";
-import { Book, ChevronDown, ChevronUp, Eraser, Search, X } from "lucide-react";
+import { Book, Bot, ChevronDown, ChevronUp, Copy, Eraser, Search, X } from "lucide-react";
 import { clsx } from "clsx";
 
 interface TerminalProps {
@@ -123,10 +123,12 @@ export default function TerminalComponent({ server, onOsDetected, onOutput, init
   const socketRef = useRef<Socket | null>(null);
   const xtermRef = useRef<XTerm | null>(null);
   const searchAddonRef = useRef<SearchAddon | null>(null);
+  const toolbarNoticeTimerRef = useRef<number | null>(null);
   const [showRecipes, setShowRecipes] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
   const [searchValue, setSearchValue] = useState("");
   const [searchStats, setSearchStats] = useState({ index: -1, count: 0 });
+  const [toolbarNotice, setToolbarNotice] = useState("");
   const initialCommandSent = useRef(false);
   const showSearchRef = useRef(showSearch);
   const searchValueRef = useRef(searchValue);
@@ -139,6 +141,15 @@ export default function TerminalComponent({ server, onOsDetected, onOutput, init
   useEffect(() => {
       searchValueRef.current = searchValue;
   }, [searchValue]);
+
+  useEffect(() => {
+      return () => {
+          if (toolbarNoticeTimerRef.current) {
+              window.clearTimeout(toolbarNoticeTimerRef.current);
+              toolbarNoticeTimerRef.current = null;
+          }
+      };
+  }, []);
 
   const searchOptions = {
       caseSensitive: false,
@@ -159,10 +170,75 @@ export default function TerminalComponent({ server, onOsDetected, onOutput, init
       setSearchStats({ index: -1, count: 0 });
   };
 
+  const showNotice = (message: string) => {
+      setToolbarNotice(message);
+
+      if (toolbarNoticeTimerRef.current) {
+          window.clearTimeout(toolbarNoticeTimerRef.current);
+      }
+
+      toolbarNoticeTimerRef.current = window.setTimeout(() => {
+          setToolbarNotice("");
+          toolbarNoticeTimerRef.current = null;
+      }, 2200);
+  };
+
   const clearTerminalScreen = () => {
       xtermRef.current?.clear();
       clearSearch();
       xtermRef.current?.focus();
+      showNotice("Screen cleared");
+  };
+
+  const getTerminalSnapshot = (maxLines = 140, maxChars = 6000) => {
+      const term = xtermRef.current;
+      if (!term) return "";
+
+      const buffer = term.buffer.active;
+      const startLine = Math.max(0, buffer.length - maxLines);
+      const lines: string[] = [];
+
+      for (let i = startLine; i < buffer.length; i += 1) {
+          const line = buffer.getLine(i);
+          if (!line) continue;
+          lines.push(line.translateToString(true));
+      }
+
+      const snapshot = lines.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+      if (!snapshot) return "";
+
+      return snapshot.length > maxChars ? snapshot.slice(-maxChars) : snapshot;
+  };
+
+  const copyTerminalSnapshot = async () => {
+      const snapshot = getTerminalSnapshot();
+      if (!snapshot) {
+          showNotice("No terminal output yet");
+          return;
+      }
+
+      try {
+          await navigator.clipboard.writeText(snapshot);
+          showNotice("Recent output copied");
+      } catch (error) {
+          console.warn("Failed to copy terminal output", error);
+          showNotice("Copy failed");
+      }
+  };
+
+  const askAiAboutTerminal = () => {
+      const snapshot = getTerminalSnapshot();
+      if (!snapshot) {
+          showNotice("No terminal output yet");
+          return;
+      }
+
+      window.dispatchEvent(new CustomEvent("terminal-chat-prompt", {
+          detail: {
+              prompt: "Analyze the recent terminal output and suggest the safest next step."
+          }
+      }));
+      showNotice("Prompt sent to AI");
   };
 
   const openSearchPanel = () => {
@@ -577,47 +653,70 @@ export default function TerminalComponent({ server, onOsDetected, onOutput, init
   return (
         <div className="relative w-full h-full bg-[#0f1115]">
         <div ref={terminalRef} className="w-full h-full overflow-hidden pl-2" />
-        
-        {/* Recipe Button */}
-        <button 
-            onClick={() => {
-                setShowSearch(false);
-                clearSearch();
-                setShowRecipes(!showRecipes);
-            }}
-            className={clsx(
-                "absolute top-2 right-4 p-2 rounded-md backdrop-blur-sm transition-all z-10 shadow-lg border",
-                showRecipes 
-                    ? "bg-blue-600 text-white border-blue-500" 
-                    : "bg-zinc-800/50 text-zinc-400 border-zinc-700/50 hover:bg-zinc-700 hover:text-zinc-200"
-            )}
-            title="AI Hints"
-        >
-            <Book className="w-4 h-4" />
-        </button>
 
-        <button
-            onClick={() => {
-                openSearchPanel();
-            }}
-            className={clsx(
-                "absolute top-2 right-16 p-2 rounded-md backdrop-blur-sm transition-all z-10 shadow-lg border",
-                showSearch
-                    ? "bg-blue-600 text-white border-blue-500"
-                    : "bg-zinc-800/50 text-zinc-400 border-zinc-700/50 hover:bg-zinc-700 hover:text-zinc-200"
-            )}
-            title="Search terminal"
-        >
-            <Search className="w-4 h-4" />
-        </button>
+        <div className="absolute top-2 right-4 flex flex-col items-end gap-2 z-10">
+            <div className="flex items-center gap-2">
+                <button
+                    onClick={copyTerminalSnapshot}
+                    className="p-2 rounded-md backdrop-blur-sm transition-all shadow-lg border bg-zinc-800/50 text-zinc-400 border-zinc-700/50 hover:bg-zinc-700 hover:text-zinc-200"
+                    title="Copy recent terminal output"
+                >
+                    <Copy className="w-4 h-4" />
+                </button>
+                <button
+                    onClick={askAiAboutTerminal}
+                    className="p-2 rounded-md backdrop-blur-sm transition-all shadow-lg border bg-zinc-800/50 text-zinc-400 border-zinc-700/50 hover:bg-zinc-700 hover:text-zinc-200"
+                    title="Ask AI about recent output"
+                >
+                    <Bot className="w-4 h-4" />
+                </button>
+                <button
+                    onClick={clearTerminalScreen}
+                    className="p-2 rounded-md backdrop-blur-sm transition-all shadow-lg border bg-zinc-800/50 text-zinc-400 border-zinc-700/50 hover:bg-zinc-700 hover:text-zinc-200"
+                    title="Clear terminal"
+                >
+                    <Eraser className="w-4 h-4" />
+                </button>
+            </div>
+            <div className="flex items-center gap-2">
+                <button
+                    onClick={() => {
+                        openSearchPanel();
+                    }}
+                    className={clsx(
+                        "p-2 rounded-md backdrop-blur-sm transition-all shadow-lg border",
+                        showSearch
+                            ? "bg-blue-600 text-white border-blue-500"
+                            : "bg-zinc-800/50 text-zinc-400 border-zinc-700/50 hover:bg-zinc-700 hover:text-zinc-200"
+                    )}
+                    title="Search terminal"
+                >
+                    <Search className="w-4 h-4" />
+                </button>
+                <button 
+                    onClick={() => {
+                        setShowSearch(false);
+                        clearSearch();
+                        setShowRecipes(!showRecipes);
+                    }}
+                    className={clsx(
+                        "p-2 rounded-md backdrop-blur-sm transition-all shadow-lg border",
+                        showRecipes 
+                            ? "bg-blue-600 text-white border-blue-500" 
+                            : "bg-zinc-800/50 text-zinc-400 border-zinc-700/50 hover:bg-zinc-700 hover:text-zinc-200"
+                    )}
+                    title="AI Hints"
+                >
+                    <Book className="w-4 h-4" />
+                </button>
+            </div>
+        </div>
 
-        <button
-            onClick={clearTerminalScreen}
-            className="absolute top-2 right-28 p-2 rounded-md backdrop-blur-sm transition-all z-10 shadow-lg border bg-zinc-800/50 text-zinc-400 border-zinc-700/50 hover:bg-zinc-700 hover:text-zinc-200"
-            title="Clear terminal"
-        >
-            <Eraser className="w-4 h-4" />
-        </button>
+        {toolbarNotice && (
+            <div className="absolute top-12 right-4 rounded border border-zinc-700 bg-black/80 px-3 py-1.5 text-[11px] text-zinc-300 shadow-lg z-20">
+                {toolbarNotice}
+            </div>
+        )}
 
         {showSearch && (
             <div className="absolute top-12 right-4 w-[20rem] bg-[#0f1115] border border-zinc-800 rounded-lg shadow-2xl z-20 overflow-hidden">

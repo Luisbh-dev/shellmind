@@ -65,6 +65,7 @@ export default function Chat({ activeServer, terminalHistory, terminalIssues }: 
     const [autoRunConfirmOpen, setAutoRunConfirmOpen] = useState(false);
 
     const messagesContainerRef = useRef<HTMLDivElement>(null);
+    const inputRef = useRef<HTMLTextAreaElement>(null);
     const pendingFixItRequestRef = useRef(0);
     const issueToastTimerRef = useRef<number | null>(null);
     const lastAnnouncedIssueIdRef = useRef<string | null>(null);
@@ -187,6 +188,21 @@ export default function Chat({ activeServer, terminalHistory, terminalIssues }: 
     useEffect(() => {
         scrollToBottom();
     }, [messages]);
+
+    useEffect(() => {
+        const handleTerminalChatPrompt = (event: Event) => {
+            const detail = (event as CustomEvent<{ prompt?: string }>).detail;
+            if (!detail?.prompt) return;
+
+            setInput(detail.prompt);
+            window.requestAnimationFrame(() => inputRef.current?.focus());
+        };
+
+        window.addEventListener("terminal-chat-prompt", handleTerminalChatPrompt as EventListener);
+        return () => {
+            window.removeEventListener("terminal-chat-prompt", handleTerminalChatPrompt as EventListener);
+        };
+    }, []);
 
     const runCommand = (cmd: string) => {
         const lines = cmd.split("\n")
@@ -554,6 +570,7 @@ export default function Chat({ activeServer, terminalHistory, terminalIssues }: 
 
                 <div className="relative">
                     <textarea
+                        ref={inputRef}
                         value={input}
                         onChange={(e) => setInput(e.target.value)}
                         onKeyDown={(e) => {

@@ -220,6 +220,18 @@ function App() {
         }
     }, [isS3Connection, isChatOpen]);
 
+    useEffect(() => {
+        const handleTerminalChatPrompt = () => {
+            if (!activeServer || activeServer.type === 's3') return;
+            setIsChatOpen(true);
+        };
+
+        window.addEventListener('terminal-chat-prompt', handleTerminalChatPrompt);
+        return () => {
+            window.removeEventListener('terminal-chat-prompt', handleTerminalChatPrompt);
+        };
+    }, [activeServer]);
+
     // Detect Electron
     const isElectron = navigator.userAgent.toLowerCase().includes(' electron/');
 
