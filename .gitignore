@@ -41,6 +41,7 @@ pids
 # Local debug captures
 tmp-rdp/
 server_dump.txt
+docs/
 
 # OS Files
 .DS_Store
