@@ -8,7 +8,7 @@ import { WebglAddon } from "xterm-addon-webgl";
 import { SearchAddon } from "@xterm/addon-search";
 import "xterm/css/xterm.css";
 import io, { Socket } from "socket.io-client";
-import { Book, Bot, ChevronDown, ChevronUp, Copy, Eraser, Search, X } from "lucide-react";
+import { Book, Bot, ChevronDown, ChevronUp, Copy, Eraser, History, Play, Search, Star, X } from "lucide-react";
 import { clsx } from "clsx";
 
 interface TerminalProps {
@@ -35,6 +35,19 @@ type ErrorHighlight = {
     marker: IMarker;
     decoration?: IDecoration;
     disposeRender?: () => void;
+};
+
+type CommandHistoryEntry = {
+    id: string;
+    command: string;
+    timestamp: number;
+    source: "typed" | "ai" | "hint";
+};
+
+type FavoriteCommandEntry = {
+    id: string;
+    command: string;
+    addedAt: number;
 };
 
 const AI_HINTS: Record<string, HintGroup[]> = {
@@ -98,6 +111,9 @@ const AI_HINTS: Record<string, HintGroup[]> = {
 
 const stripAnsiCodes = (value: string) => value.replace(/\x1B\[[0-9;?]*[ -/]*[@-~]/g, "");
 const normalizeTerminalText = (value: string) => stripAnsiCodes(value).replace(/\r/g, "");
+const COMMAND_HISTORY_LIMIT = 18;
+const COMMAND_HISTORY_STORAGE_PREFIX = "shellmind-command-history:";
+const FAVORITE_COMMAND_STORAGE_PREFIX = "shellmind-favorite-commands:";
 
 const ERROR_LINE_PATTERN =
     /(?:^|\b)(permission denied|command not found|not recognized|no such file or directory|cannot find path|access denied|refused|timed out|fatal|error:|exception|authentication failed|auth failed|forbidden|unable to find package provider|provider .* not found|could not find package provider|the term .* is not recognized|cannot stat|cannot open|operation not permitted|broken pipe|segmentation fault|bad file descriptor|failed)\b/i;
@@ -124,15 +140,22 @@ export default function TerminalComponent({ server, onOsDetected, onOutput, init
   const xtermRef = useRef<XTerm | null>(null);
   const searchAddonRef = useRef<SearchAddon | null>(null);
   const toolbarNoticeTimerRef = useRef<number | null>(null);
+  const commandBufferRef = useRef("");
   const [showRecipes, setShowRecipes] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
   const [searchValue, setSearchValue] = useState("");
   const [searchStats, setSearchStats] = useState({ index: -1, count: 0 });
   const [toolbarNotice, setToolbarNotice] = useState("");
+  const [commandHistory, setCommandHistory] = useState<CommandHistoryEntry[]>([]);
+  const [favoriteCommands, setFavoriteCommands] = useState<FavoriteCommandEntry[]>([]);
   const initialCommandSent = useRef(false);
   const showSearchRef = useRef(showSearch);
   const searchValueRef = useRef(searchValue);
   const errorHighlightsRef = useRef<ErrorHighlight[]>([]);
+  const supportsCommandHistory = !initialCommand;
+  const commandHistoryStorageKey = `${COMMAND_HISTORY_STORAGE_PREFIX}${server.id}`;
+  const favoriteCommandsStorageKey = `${FAVORITE_COMMAND_STORAGE_PREFIX}${server.id}`;
 
   useEffect(() => {
       showSearchRef.current = showSearch;
@@ -141,6 +164,44 @@ export default function TerminalComponent({ server, onOsDetected, onOutput, init
   useEffect(() => {
       searchValueRef.current = searchValue;
   }, [searchValue]);
+
+  useEffect(() => {
+      setShowHistory(false);
+      commandBufferRef.current = "";
+
+      if (!supportsCommandHistory) {
+          setCommandHistory([]);
+          return;
+      }
+
+      try {
+          const raw = window.localStorage.getItem(commandHistoryStorageKey);
+          if (!raw) {
+              setCommandHistory([]);
+              return;
+          }
+
+          const parsed = JSON.parse(raw) as CommandHistoryEntry[];
+          setCommandHistory(Array.isArray(parsed) ? parsed.slice(0, COMMAND_HISTORY_LIMIT) : []);
+      } catch (error) {
+          console.warn("Failed to load command history", error);
+          setCommandHistory([]);
+      }
+
+      try {
+          const rawFavorites = window.localStorage.getItem(favoriteCommandsStorageKey);
+          if (!rawFavorites) {
+              setFavoriteCommands([]);
+              return;
+          }
+
+          const parsedFavorites = JSON.parse(rawFavorites) as FavoriteCommandEntry[];
+          setFavoriteCommands(Array.isArray(parsedFavorites) ? parsedFavorites : []);
+      } catch (error) {
+          console.warn("Failed to load favorite commands", error);
+          setFavoriteCommands([]);
+      }
+  }, [commandHistoryStorageKey, favoriteCommandsStorageKey, supportsCommandHistory]);
 
   useEffect(() => {
       return () => {
@@ -168,6 +229,80 @@ export default function TerminalComponent({ server, onOsDetected, onOutput, init
   const clearSearch = () => {
       searchAddonRef.current?.clearDecorations();
       setSearchStats({ index: -1, count: 0 });
+  };
+
+  const persistCommandHistory = (items: CommandHistoryEntry[]) => {
+      if (!supportsCommandHistory) return;
+
+      try {
+          window.localStorage.setItem(commandHistoryStorageKey, JSON.stringify(items));
+      } catch (error) {
+          console.warn("Failed to persist command history", error);
+      }
+  };
+
+  const persistFavoriteCommands = (items: FavoriteCommandEntry[]) => {
+      if (!supportsCommandHistory) return;
+
+      try {
+          window.localStorage.setItem(favoriteCommandsStorageKey, JSON.stringify(items));
+      } catch (error) {
+          console.warn("Failed to persist favorite commands", error);
+      }
+  };
+
+  const saveCommandToHistory = (command: string, source: CommandHistoryEntry["source"]) => {
+      if (!supportsCommandHistory) return;
+
+      const normalized = command
+          .replace(/\r/g, "")
+          .split("\n")
+          .map((line) => line.trim())
+          .filter(Boolean)
+          .join(" && ")
+          .trim();
+
+      if (!normalized) return;
+
+      setCommandHistory((prev) => {
+          const next: CommandHistoryEntry[] = [
+              {
+                  id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+                  command: normalized,
+                  timestamp: Date.now(),
+                  source
+              },
+              ...prev.filter((entry) => entry.command !== normalized)
+          ].slice(0, COMMAND_HISTORY_LIMIT);
+
+          persistCommandHistory(next);
+          return next;
+      });
+  };
+
+  const isFavoriteCommand = (command: string) =>
+      favoriteCommands.some((entry) => entry.command === command);
+
+  const toggleFavoriteCommand = (command: string) => {
+      if (!supportsCommandHistory || !command.trim()) return;
+
+      setFavoriteCommands((prev) => {
+          const exists = prev.some((entry) => entry.command === command);
+          const next = exists
+              ? prev.filter((entry) => entry.command !== command)
+              : [
+                  {
+                      id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+                      command,
+                      addedAt: Date.now()
+                  },
+                  ...prev
+                ];
+
+          persistFavoriteCommands(next);
+          showNotice(exists ? "Removed from favorites" : "Saved to favorites");
+          return next;
+      });
   };
 
   const showNotice = (message: string) => {
@@ -239,6 +374,17 @@ export default function TerminalComponent({ server, onOsDetected, onOutput, init
           }
       }));
       showNotice("Prompt sent to AI");
+  };
+
+  const sendCommandToTerminal = (command: string, source?: CommandHistoryEntry["source"]) => {
+      if (!command || !socketRef.current?.connected) return;
+
+      socketRef.current.emit("ssh-input", command + "\n");
+      xtermRef.current?.focus();
+
+      if (source) {
+          saveCommandToHistory(command, source);
+      }
   };
 
   const openSearchPanel = () => {
@@ -328,7 +474,7 @@ export default function TerminalComponent({ server, onOsDetected, onOutput, init
           actionButton.type = "button";
           actionButton.dataset.errorAction = "true";
           actionButton.title = "Fix this SSH issue";
-          actionButton.textContent = "⚡";
+          actionButton.textContent = "!";
           actionButton.style.position = "absolute";
           actionButton.style.left = "4px";
           actionButton.style.top = "50%";
@@ -592,6 +738,33 @@ export default function TerminalComponent({ server, onOsDetected, onOutput, init
     });
 
     term.onData((data) => {
+      if (supportsCommandHistory && !initialCommand && !data.includes("\u001b")) {
+          for (const char of data) {
+              if (char === "\r") {
+                  const submitted = commandBufferRef.current.trim();
+                  if (submitted) {
+                      saveCommandToHistory(submitted, "typed");
+                  }
+                  commandBufferRef.current = "";
+                  continue;
+              }
+
+              if (char === "\u007f" || char === "\b") {
+                  commandBufferRef.current = commandBufferRef.current.slice(0, -1);
+                  continue;
+              }
+
+              if (char === "\t") {
+                  commandBufferRef.current += " ";
+                  continue;
+              }
+
+              if (char >= " ") {
+                  commandBufferRef.current += char;
+              }
+          }
+      }
+
       socket.emit("ssh-input", data);
     });
 
@@ -628,10 +801,7 @@ export default function TerminalComponent({ server, onOsDetected, onOutput, init
           const cmd = (e as CustomEvent<string>).detail;
           if (!cmd || typeof cmd !== "string") return;
 
-          if (socketRef.current?.connected) {
-              socketRef.current.emit("ssh-input", cmd + "\n");
-              xtermRef.current?.focus();
-          }
+          sendCommandToTerminal(cmd, supportsCommandHistory ? "ai" : undefined);
       };
 
       window.addEventListener("run-terminal-command", handleExternalCommand as EventListener);
@@ -642,11 +812,20 @@ export default function TerminalComponent({ server, onOsDetected, onOutput, init
   }, [isActive]);
 
   const runSnippet = (cmd: string) => {
-      if (socketRef.current?.connected) {
-          socketRef.current.emit("ssh-input", cmd + "\n");
-          xtermRef.current?.focus();
-          setShowRecipes(false);
-      }
+      sendCommandToTerminal(cmd, supportsCommandHistory ? "hint" : undefined);
+      setShowRecipes(false);
+  };
+
+  const rerunHistoryCommand = (entry: CommandHistoryEntry) => {
+      sendCommandToTerminal(entry.command, supportsCommandHistory ? entry.source : undefined);
+      setShowHistory(false);
+      showNotice("Command re-run");
+  };
+
+  const rerunFavoriteCommand = (entry: FavoriteCommandEntry) => {
+      sendCommandToTerminal(entry.command, supportsCommandHistory ? "hint" : undefined);
+      setShowHistory(false);
+      showNotice("Favorite command run");
   };
 
   const currentHintGroups = AI_HINTS[server.type] || AI_HINTS.linux;
@@ -681,6 +860,7 @@ export default function TerminalComponent({ server, onOsDetected, onOutput, init
             <div className="flex items-center gap-2">
                 <button
                     onClick={() => {
+                        setShowHistory(false);
                         openSearchPanel();
                     }}
                     className={clsx(
@@ -693,10 +873,30 @@ export default function TerminalComponent({ server, onOsDetected, onOutput, init
                 >
                     <Search className="w-4 h-4" />
                 </button>
+                {supportsCommandHistory && (
+                    <button
+                        onClick={() => {
+                            setShowSearch(false);
+                            clearSearch();
+                            setShowRecipes(false);
+                            setShowHistory(!showHistory);
+                        }}
+                        className={clsx(
+                            "p-2 rounded-md backdrop-blur-sm transition-all shadow-lg border",
+                            showHistory
+                                ? "bg-blue-600 text-white border-blue-500"
+                                : "bg-zinc-800/50 text-zinc-400 border-zinc-700/50 hover:bg-zinc-700 hover:text-zinc-200"
+                        )}
+                        title="Command history"
+                    >
+                        <History className="w-4 h-4" />
+                    </button>
+                )}
                 <button 
                     onClick={() => {
                         setShowSearch(false);
                         clearSearch();
+                        setShowHistory(false);
                         setShowRecipes(!showRecipes);
                     }}
                     className={clsx(
@@ -787,6 +987,110 @@ export default function TerminalComponent({ server, onOsDetected, onOutput, init
                             </div>
                         </div>
                     </div>
+                </div>
+            </div>
+        )}
+
+        {showHistory && supportsCommandHistory && (
+            <div className="absolute top-24 right-4 w-[22rem] bg-[#0f1115] border border-zinc-800 rounded-lg shadow-2xl z-20 overflow-hidden">
+                <div className="flex items-center justify-between px-3 py-2 border-b border-zinc-800 bg-zinc-900/50">
+                    <div className="min-w-0">
+                        <span className="block text-xs font-bold text-zinc-300 uppercase tracking-wider">Command History</span>
+                        <span className="block text-[10px] text-zinc-500 mt-0.5">Recent commands for this server</span>
+                    </div>
+                    <button
+                        onClick={() => setShowHistory(false)}
+                        className="text-zinc-500 hover:text-white"
+                    >
+                        <X className="w-3.5 h-3.5" />
+                    </button>
+                </div>
+                <div className="max-h-[320px] overflow-y-auto p-2 space-y-1">
+                    {favoriteCommands.length > 0 && (
+                        <div className="space-y-1 pb-2 mb-2 border-b border-zinc-800">
+                            <div className="px-1 text-[10px] uppercase tracking-wider text-zinc-600">Favorites</div>
+                            {favoriteCommands.map((entry) => (
+                                <div
+                                    key={entry.id}
+                                    className="rounded border border-amber-900/40 bg-amber-500/5 px-3 py-2"
+                                >
+                                    <div className="flex items-start justify-between gap-2">
+                                        <button
+                                            onClick={() => rerunFavoriteCommand(entry)}
+                                            className="min-w-0 flex-1 text-left"
+                                            title="Run this favorite command"
+                                        >
+                                            <div className="text-[11px] text-zinc-200 font-mono break-all">{entry.command}</div>
+                                            <div className="mt-2 flex items-center gap-1 text-[10px] text-amber-300/80">
+                                                <Play className="w-3 h-3" />
+                                                Run favorite
+                                            </div>
+                                        </button>
+                                        <button
+                                            onClick={(event) => {
+                                                event.preventDefault();
+                                                event.stopPropagation();
+                                                toggleFavoriteCommand(entry.command);
+                                            }}
+                                            className="rounded border border-amber-900/40 px-2 py-1 text-amber-300 hover:bg-amber-500/10"
+                                            title="Remove favorite"
+                                        >
+                                            <Star className="w-3.5 h-3.5 fill-current" />
+                                        </button>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+
+                    {commandHistory.length === 0 ? (
+                        <div className="rounded border border-zinc-800/80 bg-black/30 px-3 py-4 text-xs text-zinc-500">
+                            Commands you run here will start appearing in this list.
+                        </div>
+                    ) : (
+                        commandHistory.map((entry) => (
+                            <div
+                                key={entry.id}
+                                className="rounded border border-zinc-800/70 bg-black/30 px-3 py-2 hover:bg-zinc-800 hover:border-zinc-700 transition-colors"
+                            >
+                                <div className="flex items-start justify-between gap-2">
+                                    <button
+                                        onClick={() => rerunHistoryCommand(entry)}
+                                        className="min-w-0 flex-1 text-left"
+                                        title="Run this command again"
+                                    >
+                                        <div className="flex items-center justify-between gap-2">
+                                            <span className="text-[10px] uppercase tracking-wider text-zinc-600">{entry.source}</span>
+                                            <span className="text-[10px] text-zinc-600">
+                                                {new Date(entry.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                                            </span>
+                                        </div>
+                                        <div className="mt-1 text-[11px] text-zinc-200 font-mono break-all">{entry.command}</div>
+                                        <div className="mt-2 flex items-center gap-1 text-[10px] text-zinc-500">
+                                            <Play className="w-3 h-3" />
+                                            Run again
+                                        </div>
+                                    </button>
+                                    <button
+                                        onClick={(event) => {
+                                            event.preventDefault();
+                                            event.stopPropagation();
+                                            toggleFavoriteCommand(entry.command);
+                                        }}
+                                        className={clsx(
+                                            "rounded border px-2 py-1 transition-colors",
+                                            isFavoriteCommand(entry.command)
+                                                ? "border-amber-900/40 text-amber-300 hover:bg-amber-500/10"
+                                                : "border-zinc-700 text-zinc-500 hover:bg-zinc-800 hover:text-zinc-200"
+                                        )}
+                                        title={isFavoriteCommand(entry.command) ? "Remove favorite" : "Save as favorite"}
+                                    >
+                                        <Star className={clsx("w-3.5 h-3.5", isFavoriteCommand(entry.command) && "fill-current")} />
+                                    </button>
+                                </div>
+                            </div>
+                        ))
+                    )}
                 </div>
             </div>
         )}
