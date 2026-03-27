@@ -1,5 +1,7 @@
 import express from "express";
 import { createServer } from "http";
+import http from "http";
+import https from "https";
 import { Server } from "socket.io";
 import { Client } from "ssh2";
 const rdp = require("@electerm/rdpjs");
@@ -165,6 +167,83 @@ function getMiniMaxProxyStatus(providerStatus: ProviderStatus) {
         localKeyConfigured: providerStatus.configured,
         localKeySource: providerStatus.source
     };
+}
+
+function extractMiniMaxText(payload: any): string {
+    return (Array.isArray(payload?.content) ? payload.content : [])
+        .filter((block: any) => block?.type === "text" && typeof block?.text === "string")
+        .map((block: any) => block.text)
+        .join("\n")
+        .trim();
+}
+
+function shouldRetryMiniMaxWithoutClientKey(statusCode: number, errorMessage: string): boolean {
+    const normalized = (errorMessage || "").toLowerCase();
+
+    return [400, 401, 403].includes(statusCode) ||
+        normalized.includes("api key") ||
+        normalized.includes("x-minimax-api-key") ||
+        normalized.includes("unauthorized") ||
+        normalized.includes("forbidden") ||
+        normalized.includes("invalid") ||
+        normalized.includes("authentication");
+}
+
+function summarizeMiniMaxPayload(payload: any): string {
+    const contentTypes = Array.isArray(payload?.content)
+        ? payload.content.map((block: any) => block?.type || "unknown").join(",")
+        : "none";
+    const stopReason = payload?.stop_reason || "unknown";
+    return `stop_reason=${stopReason}; content_types=${contentTypes}`;
+}
+
+async function sendMiniMaxProxyRequest(headers: Record<string, string>, body: object): Promise<{
+    statusCode: number;
+    statusText: string;
+    payload: any;
+    rawBody: string;
+}> {
+    const targetUrl = new URL(`${MINIMAX_PROXY_BASE_URL}/messages`);
+    const transport = targetUrl.protocol === "http:" ? http : https;
+    const bodyText = JSON.stringify(body);
+
+    return new Promise((resolve, reject) => {
+        const request = transport.request(targetUrl, {
+            method: "POST",
+            headers: {
+                ...headers,
+                "content-length": Buffer.byteLength(bodyText).toString()
+            }
+        }, (response) => {
+            const chunks: Buffer[] = [];
+
+            response.on("data", (chunk) => {
+                chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+            });
+
+            response.on("end", () => {
+                const rawBody = Buffer.concat(chunks).toString("utf8");
+                let payload: any = null;
+
+                try {
+                    payload = rawBody ? JSON.parse(rawBody) : null;
+                } catch {
+                    payload = null;
+                }
+
+                resolve({
+                    statusCode: response.statusCode || 0,
+                    statusText: response.statusMessage || "",
+                    payload,
+                    rawBody
+                });
+            });
+        });
+
+        request.on("error", reject);
+        request.write(bodyText);
+        request.end();
+    });
 }
 
 function isRetryableAiError(message: string): boolean {
@@ -490,27 +569,25 @@ async function getWindowsStatus(conn: Client): Promise<StatusSnapshot> {
 }
 
 async function callMiniMaxCompatibleAnthropicApi(clientApiKey: string | null, modelName: string, fullPrompt: string): Promise<string> {
-    const headers: Record<string, string> = {
-        "content-type": "application/json",
-        "anthropic-version": "2023-06-01"
-    };
+    const sendRequest = async (includeClientKey: boolean, promptText: string) => {
+        const headers: Record<string, string> = {
+            "content-type": "application/json",
+            "anthropic-version": "2023-06-01"
+        };
 
-    if (MINIMAX_PROXY_API_KEY) {
-        headers["x-api-key"] = MINIMAX_PROXY_API_KEY;
-    }
+        if (MINIMAX_PROXY_API_KEY) {
+            headers["x-api-key"] = MINIMAX_PROXY_API_KEY;
+        }
 
-    if (MINIMAX_PROXY_BEARER_TOKEN) {
-        headers["authorization"] = `Bearer ${MINIMAX_PROXY_BEARER_TOKEN}`;
-    }
+        if (MINIMAX_PROXY_BEARER_TOKEN) {
+            headers["authorization"] = `Bearer ${MINIMAX_PROXY_BEARER_TOKEN}`;
+        }
 
-    if (ALLOW_CLIENT_MINIMAX_KEY && clientApiKey) {
-        headers["x-minimax-api-key"] = clientApiKey;
-    }
+        if (includeClientKey && clientApiKey) {
+            headers["x-minimax-api-key"] = clientApiKey;
+        }
 
-    const apiResponse = await fetch(`${MINIMAX_PROXY_BASE_URL}/messages`, {
-        method: "POST",
-        headers,
-        body: JSON.stringify({
+        const response = await sendMiniMaxProxyRequest(headers, {
             model: modelName,
             max_tokens: 4096,
             system: "You are a helpful assistant.",
@@ -520,29 +597,51 @@ async function callMiniMaxCompatibleAnthropicApi(clientApiKey: string | null, mo
                     content: [
                         {
                             type: "text",
-                            text: fullPrompt
+                            text: promptText
                         }
                     ]
                 }
             ]
-        })
-    });
+        });
 
-    const payload = await apiResponse.json().catch(() => null);
+        return response;
+    };
 
-    if (!apiResponse.ok) {
-        const errorMessage = payload?.error?.message || payload?.message || apiResponse.statusText || "Unknown MiniMax API error";
-        throw new Error(`${apiResponse.status} ${errorMessage}`.trim());
+    const shouldUseClientKey = ALLOW_CLIENT_MINIMAX_KEY && Boolean(clientApiKey);
+    let { statusCode, statusText, payload, rawBody } = await sendRequest(shouldUseClientKey, fullPrompt);
+    let text = extractMiniMaxText(payload);
+
+    if (statusCode >= 400 && shouldUseClientKey) {
+        const errorMessage = payload?.error?.message || payload?.message || statusText || rawBody || "Unknown MiniMax API error";
+
+        if (shouldRetryMiniMaxWithoutClientKey(statusCode, errorMessage)) {
+            console.warn("[MiniMax Proxy] Client MiniMax key failed. Retrying with managed proxy key.");
+            ({ statusCode, statusText, payload, rawBody } = await sendRequest(false, fullPrompt));
+            text = extractMiniMaxText(payload);
+        }
     }
 
-    const text = (Array.isArray(payload?.content) ? payload.content : [])
-        .filter((block: any) => block?.type === "text" && typeof block?.text === "string")
-        .map((block: any) => block.text)
-        .join("\n")
-        .trim();
+    if (statusCode < 400 && !text && shouldUseClientKey) {
+        console.warn("[MiniMax Proxy] Response had no final text with client key. Retrying with managed proxy key.");
+        ({ statusCode, statusText, payload, rawBody } = await sendRequest(false, fullPrompt));
+        text = extractMiniMaxText(payload);
+    }
+
+    if (statusCode < 400 && !text) {
+        const forcedFinalPrompt = `${fullPrompt}\n\nIMPORTANT: Return a final user-facing answer as a text block. Do not return thinking only.`;
+        console.warn(`[MiniMax Proxy] Response had no final text. Retrying with forced final answer. ${summarizeMiniMaxPayload(payload)}`);
+        ({ statusCode, statusText, payload, rawBody } = await sendRequest(false, forcedFinalPrompt));
+        text = extractMiniMaxText(payload);
+    }
+
+    if (statusCode >= 400) {
+        const errorMessage = payload?.error?.message || payload?.message || statusText || rawBody || "Unknown MiniMax API error";
+        throw new Error(`${statusCode} ${errorMessage}`.trim());
+    }
 
     if (!text) {
-        throw new Error("MiniMax returned no text content.");
+        const payloadSummary = payload ? summarizeMiniMaxPayload(payload) : `non_json_body=${rawBody.slice(0, 180) || "empty"}`;
+        throw new Error(`MiniMax returned no final text content. ${payloadSummary}`);
     }
 
     return text;
@@ -756,6 +855,27 @@ app.post("/api/config/apikey", (req, res) => {
     db.run("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", [providerConfig.settingKey, key], (err) => {
         if (err) return res.status(500).json({ error: err.message });
         res.json({ message: "success" });
+    });
+});
+
+// Delete API Key (only if not in env)
+app.delete("/api/config/apikey", (req, res) => {
+    const provider: AiProvider = isAiProvider(req.body?.provider) ? req.body.provider : "gemini";
+    const providerConfig = AI_PROVIDER_CONFIG[provider];
+
+    if (provider === "minimax" && !ALLOW_CLIENT_MINIMAX_KEY) {
+        return res.status(403).json({
+            error: "MiniMax client keys are disabled. This app sends MiniMax traffic through the managed proxy."
+        });
+    }
+
+    if (process.env[providerConfig.envKey]) {
+        return res.status(403).json({ error: `${providerConfig.label} API Key is already set via Environment Variables.` });
+    }
+
+    db.run("DELETE FROM settings WHERE key = ?", [providerConfig.settingKey], function (err) {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json({ message: "success", changes: this.changes });
     });
 });
 

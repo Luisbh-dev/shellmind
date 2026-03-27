@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { X, Key, Loader2, CheckCircle, Lock } from 'lucide-react';
+import { X, Key, Loader2, CheckCircle, Lock, Trash2 } from 'lucide-react';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -45,6 +45,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const [status, setStatus] = useState<SettingsStatus | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [savingProvider, setSavingProvider] = useState<ProviderKey | null>(null);
+  const [deletingProvider, setDeletingProvider] = useState<ProviderKey | null>(null);
   const [connError, setConnError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -94,6 +95,34 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     }
   };
 
+  const handleDelete = async (provider: ProviderKey) => {
+    const confirmed = window.confirm(`Delete the saved ${PROVIDER_COPY[provider].label} API key from this app?`);
+    if (!confirmed) return;
+
+    setDeletingProvider(provider);
+    try {
+      const res = await fetch('http://localhost:3001/api/config/apikey', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ provider })
+      });
+
+      if (res.ok) {
+        await fetchStatus();
+        setApiKeys(prev => ({ ...prev, [provider]: '' }));
+        alert(`${PROVIDER_COPY[provider].label} API Key deleted successfully!`);
+      } else {
+        const err = await res.json();
+        alert('Error: ' + err.error);
+      }
+    } catch (e) {
+      console.error(e);
+      alert('Failed to delete key.');
+    } finally {
+      setDeletingProvider(null);
+    }
+  };
+
   if (!isOpen) return null;
 
   return (
@@ -124,6 +153,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   const copy = PROVIDER_COPY[provider];
                   const isManagedProxy = provider === 'minimax' && proxyStatus?.enabled;
                   const isLockedByEnv = providerStatus?.source === 'env';
+                  const hasSavedKey = providerStatus?.source === 'db' || (provider === 'minimax' && proxyStatus?.localKeySource === 'db');
                   const canSaveInSettings = provider === 'gemini'
                     ? !isLockedByEnv
                     : Boolean(proxyStatus?.allowClientKey) && !isLockedByEnv;
@@ -174,7 +204,9 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                         <form onSubmit={(e) => handleSave(e, provider)} className="space-y-3">
                           <div>
                             <label className="block text-[10px] uppercase text-zinc-500 font-bold mb-1">
-                              {provider === 'minimax' ? 'Set Optional Client Key' : 'Set New API Key'}
+                              {provider === 'minimax'
+                                ? hasSavedKey ? 'Update Optional Client Key' : 'Set Optional Client Key'
+                                : hasSavedKey ? 'Update API Key' : 'Set New API Key'}
                             </label>
                             <input
                               type="password"
@@ -189,14 +221,27 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                             </p>
                           </div>
 
-                          <div className="flex justify-end">
+                          <div className="flex items-center justify-between gap-3">
+                            <div>
+                              {hasSavedKey && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleDelete(provider)}
+                                  disabled={deletingProvider === provider || savingProvider === provider}
+                                  className="px-3 py-2 border border-red-900/60 bg-red-950/30 hover:bg-red-950/50 text-red-300 text-xs font-bold rounded flex items-center gap-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                  {deletingProvider === provider ? <Loader2 className="w-3 h-3 animate-spin" /> : <Trash2 className="w-3 h-3" />}
+                                  Delete Key
+                                </button>
+                              )}
+                            </div>
                             <button
                               type="submit"
-                              disabled={savingProvider === provider || !apiKeys[provider].trim()}
+                              disabled={savingProvider === provider || deletingProvider === provider || !apiKeys[provider].trim()}
                               className="px-4 py-2 bg-teal-600 hover:bg-teal-500 text-white text-xs font-bold rounded flex items-center gap-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                               {savingProvider === provider && <Loader2 className="w-3 h-3 animate-spin" />}
-                              Save {copy.label} Key
+                              {hasSavedKey ? `Update ${copy.label} Key` : `Save ${copy.label} Key`}
                             </button>
                           </div>
                         </form>

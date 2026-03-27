@@ -11,6 +11,7 @@ It is designed for day-to-day server work across SSH, PowerShell, FTP, SFTP, and
 - MiniMax M2.7 support through the Anthropic-compatible API.
 - MiniMax M2.7 is included for free for the full duration of the alpha.
 - Gemini and MiniMax API keys can now be configured independently.
+- Saved API keys can now be updated or removed directly from the settings modal when they are not locked by environment variables.
 - MiniMax M2.7 is now the default and recommended AI model.
 - AI model selection UI has been refined with cleaner recommendation styling.
 - The Status tab is now a visual live dashboard for CPU, memory, storage, uptime, and top processes.
@@ -73,6 +74,7 @@ MINIMAX_API_KEY=your_optional_minimax_key_here
 ```
 
 You can also configure Gemini and MiniMax API keys from the app settings.
+If a key was saved in the app database instead of environment variables, you can update or delete it later from the settings modal.
 
 MiniMax traffic now always goes through the ShellMind private proxy at `https://ia.shellmind.app`.
 
