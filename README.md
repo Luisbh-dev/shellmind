@@ -12,6 +12,8 @@ It is designed for day-to-day server work across SSH, PowerShell, FTP, SFTP, and
 - Gemini and MiniMax API keys can now be configured independently.
 - MiniMax M2.7 is now the default and recommended AI model.
 - AI model selection UI has been refined with cleaner recommendation styling.
+- The Status tab is now a visual live dashboard for CPU, memory, storage, uptime, and top processes.
+- Status loading and refresh states now show clear visual feedback.
 - The noisy floating SSH issue warning in chat was removed.
 - Existing SSH issue analysis and quick-fix tools remain available in the chat panel.
 - README and environment configuration were updated for multi-provider AI usage.
@@ -28,7 +30,7 @@ It is designed for day-to-day server work across SSH, PowerShell, FTP, SFTP, and
 ### Terminal
 - SSH terminal for Linux and Unix-like servers.
 - PowerShell and SSH support for Windows servers.
-- Live status tab for system checks and diagnostics.
+- Visual live status dashboard for Linux and Windows system checks.
 - Automatic detection of common SSH failures from terminal output.
 - Highlighted error lines and clickable links directly in the terminal.
 - Built-in terminal search and quick clear controls.
@@ -91,6 +93,8 @@ For private desktop builds, prefer injecting secrets at build or runtime instead
 - Gemini and MiniMax keys can be stored separately in settings.
 - MiniMax M2.7 is now the default model.
 - AI selector UI was cleaned up and recommendation styling was improved.
+- The Status tab was rebuilt as a visual dashboard with live host metrics.
+- Status loading and refresh feedback were improved.
 - Chat no longer shows the floating SSH issue warning banner.
 
 ### 0.1.9

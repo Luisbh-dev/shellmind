@@ -6,6 +6,7 @@ import FileExplorer from '@/components/FileExplorer';
 import Chat from '@/components/Chat';
 import AddServerModal from '@/components/AddServerModal';
 import SettingsModal from '@/components/SettingsModal';
+import StatusDashboard from '@/components/StatusDashboard';
 import { Terminal as TerminalIcon, Monitor, Activity, FileText, MessageSquare } from 'lucide-react';
 import { clsx } from 'clsx';
 
@@ -33,7 +34,6 @@ function App() {
     const [servers, setServers] = useState<any[]>([]);
     const [editingServer, setEditingServer] = useState<any>(null);
     const [isChatOpen, setIsChatOpen] = useState(true);
-    const [statusTerminalMounted, setStatusTerminalMounted] = useState(false);
 
     // Terminal History Buffer (Ref to avoid re-renders)
     const terminalHistoryRef = useRef('');
@@ -184,7 +184,6 @@ function App() {
         recentTerminalIssueKeysRef.current.clear();
         lastTerminalIssueIdRef.current = null;
         setIsChatOpen(server.type !== 's3');
-        setStatusTerminalMounted(false);
         setActiveTab((server.type === 'ftp' || server.type === 's3') ? 'sftp' : 'ssh');
     };
 
@@ -234,10 +233,6 @@ function App() {
 
     // Detect Electron
     const isElectron = navigator.userAgent.toLowerCase().includes(' electron/');
-
-    const statusCommand = isWindows
-        ? "powershell -Command \"while ($true) { $s = '--- SYSTEM STATUS ---' + [Environment]::NewLine; $os = Get-CimInstance Win32_OperatingSystem; $cpu = Get-CimInstance Win32_Processor; $mem = [math]::Round($os.FreePhysicalMemory / 1024, 2); $tot = [math]::Round($os.TotalVisibleMemorySize / 1024, 2); $s += 'OS: ' + $os.Caption + [Environment]::NewLine; $s += 'Uptime: ' + ((Get-Date) - $os.LastBootUpTime).ToString('dd\\.hh\\:mm\\:ss') + [Environment]::NewLine; $s += 'CPU: ' + $cpu.LoadPercentage + '%' + [Environment]::NewLine; $s += 'Memory: ' + $mem + 'MB Free / ' + $tot + 'MB Total' + [Environment]::NewLine + [Environment]::NewLine; $s += '--- DISK USAGE ---' + [Environment]::NewLine; $s += (Get-PSDrive -PSProvider FileSystem | Select-Object Name, @{N='Used(GB)';E={[math]::Round($_.Used/1GB,2)}}, @{N='Free(GB)';E={[math]::Round($_.Free/1GB,2)}} | Format-Table -AutoSize | Out-String); $s += '--- TOP PROCESSES ---' + [Environment]::NewLine; $s += (Get-Process | Sort-Object CPU -Descending | Select-Object -First 10 Name, CPU, Id, WorkingSet | Format-Table -AutoSize | Out-String); Clear-Host; Write-Host $s; Start-Sleep -Seconds 2 }\""
-        : "if command -v htop &> /dev/null; then htop; else top; fi";
 
     return (
         <div className={clsx(
@@ -308,10 +303,7 @@ function App() {
 
                                 {activeServer.type !== 'ftp' && activeServer.type !== 's3' && (
                                     <button
-                                        onClick={() => {
-                                            setStatusTerminalMounted(true);
-                                            setActiveTab('status');
-                                        }}
+                                        onClick={() => setActiveTab('status')}
                                         className={clsx(
                                             "px-4 h-full text-xs font-medium flex items-center gap-2 transition-colors border-l border-r border-zinc-800",
                                             activeTab === 'status' ? "bg-zinc-800 text-zinc-100" : "text-zinc-500 hover:bg-zinc-900 hover:text-zinc-300"
@@ -378,14 +370,11 @@ function App() {
                                 </div>
                             )}
 
-                            {statusTerminalMounted && activeServer.type !== 'ftp' && activeServer.type !== 's3' && (
+                            {activeServer.type !== 'ftp' && activeServer.type !== 's3' && (
                                 <div className={clsx("absolute inset-0", activeTab === 'status' ? "block" : "hidden")}>
-                                    <TerminalComponent
-                                        key={`terminal-status-${activeServer.id}`}
+                                    <StatusDashboard
                                         server={activeServer}
-                                        initialCommand={statusCommand}
-                                        onOutput={handleTerminalOutput}
-                                        isActive={activeTab === 'status'}
+                                        isVisible={activeTab === 'status'}
                                     />
                                 </div>
                             )}

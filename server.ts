@@ -13,6 +13,60 @@ dotenv.config();
 
 type AiProvider = "gemini" | "minimax";
 type ConfigSource = "env" | "db" | "none";
+type ManagedServerRecord = {
+    id: number;
+    name: string;
+    ip: string;
+    type: string;
+    username?: string;
+    password?: string;
+    port?: number;
+    ssh_port?: number;
+    privateKey?: string;
+    passphrase?: string;
+    os_detail?: string;
+};
+type StatusDisk = {
+    name: string;
+    mount: string;
+    totalGB: number;
+    usedGB: number;
+    freeGB: number;
+    usagePercent: number;
+};
+type StatusProcess = {
+    pid: number;
+    name: string;
+    cpuPercent: number;
+    memoryPercent?: number;
+    memoryMB?: number;
+};
+type StatusSnapshot = {
+    platform: "linux" | "windows";
+    hostname: string;
+    os: string;
+    uptime: string;
+    cpuUsagePercent: number;
+    memory: {
+        totalMB: number;
+        usedMB: number;
+        freeMB: number;
+        usagePercent: number;
+    };
+    storage: {
+        totalGB: number;
+        usedGB: number;
+        freeGB: number;
+        usagePercent: number;
+    };
+    disks: StatusDisk[];
+    processes: StatusProcess[];
+    loadAverage?: {
+        one: number;
+        five: number;
+        fifteen: number;
+    } | null;
+};
 
 const DEFAULT_MODEL = "MiniMax-M2.7";
 const MINIMAX_ANTHROPIC_BASE_URL = process.env.MINIMAX_ANTHROPIC_BASE_URL || "https://api.minimax.io/anthropic/v1";
@@ -53,6 +107,19 @@ function getSettingValue(key: string): Promise<string | null> {
             }
 
             resolve(row?.value ?? null);
+        });
+    });
+}
+
+function getDbRow<T>(sql: string, params: any[] = []): Promise<T | null> {
+    return new Promise((resolve, reject) => {
+        db.get(sql, params, (err, row: any) => {
+            if (err) {
+                reject(err);
+                return;
+            }
+
+            resolve((row as T) ?? null);
         });
     });
 }
@@ -154,6 +221,251 @@ function isOutOfScopeAiRequest(message: string, context?: string): boolean {
     }
 
     return false;
+}
+
+function roundTo(value: number, digits = 1): number {
+    const factor = 10 ** digits;
+    return Math.round(value * factor) / factor;
+}
+
+function formatUptime(seconds: number): string {
+    const safeSeconds = Math.max(0, Math.floor(seconds || 0));
+    const days = Math.floor(safeSeconds / 86400);
+    const hours = Math.floor((safeSeconds % 86400) / 3600);
+    const minutes = Math.floor((safeSeconds % 3600) / 60);
+
+    if (days > 0) return `${days}d ${hours}h ${minutes}m`;
+    if (hours > 0) return `${hours}h ${minutes}m`;
+    return `${minutes}m`;
+}
+
+function normalizePercentage(value: number, total: number): number {
+    if (!total || total <= 0) return 0;
+    return roundTo((value / total) * 100, 1);
+}
+
+function ensureArray<T>(value: T | T[] | null | undefined): T[] {
+    if (Array.isArray(value)) return value;
+    if (value === null || value === undefined) return [];
+    return [value];
+}
+
+function parseLinuxDisks(rawOutput: string): StatusDisk[] {
+    return rawOutput
+        .split(/\r?\n/)
+        .map(line => line.trim())
+        .filter(Boolean)
+        .map((line) => {
+            const parts = line.split(/\s+/);
+            if (parts.length < 6) return null;
+
+            const [name, totalRaw, usedRaw, freeRaw, usageRaw, ...mountParts] = parts;
+            const totalGB = roundTo(parseInt(totalRaw.replace(/M$/i, ''), 10) / 1024, 1);
+            const usedGB = roundTo(parseInt(usedRaw.replace(/M$/i, ''), 10) / 1024, 1);
+            const freeGB = roundTo(parseInt(freeRaw.replace(/M$/i, ''), 10) / 1024, 1);
+            const usagePercent = roundTo(parseFloat(usageRaw.replace('%', '')), 1);
+
+            return {
+                name,
+                mount: mountParts.join(' '),
+                totalGB,
+                usedGB,
+                freeGB,
+                usagePercent
+            } satisfies StatusDisk;
+        })
+        .filter((disk): disk is StatusDisk => Boolean(disk));
+}
+
+function parseLinuxProcesses(rawOutput: string): StatusProcess[] {
+    const processes: StatusProcess[] = [];
+
+    for (const line of rawOutput.split(/\r?\n/).map(entry => entry.trim()).filter(Boolean)) {
+        const match = line.match(/^(\d+)\s+(\S+)\s+([\d.,]+)\s+([\d.,]+)\s+(\d+)$/);
+        if (!match) continue;
+
+        processes.push({
+            pid: parseInt(match[1], 10),
+            name: match[2],
+            cpuPercent: roundTo(parseFloat(match[3].replace(',', '.')), 1),
+            memoryPercent: roundTo(parseFloat(match[4].replace(',', '.')), 1),
+            memoryMB: roundTo(parseInt(match[5], 10) / 1024, 1)
+        });
+    }
+
+    return processes;
+}
+
+function aggregateStorage(disks: StatusDisk[]) {
+    const totals = disks.reduce((acc, disk) => {
+        acc.totalGB += disk.totalGB;
+        acc.usedGB += disk.usedGB;
+        acc.freeGB += disk.freeGB;
+        return acc;
+    }, { totalGB: 0, usedGB: 0, freeGB: 0 });
+
+    return {
+        totalGB: roundTo(totals.totalGB, 1),
+        usedGB: roundTo(totals.usedGB, 1),
+        freeGB: roundTo(totals.freeGB, 1),
+        usagePercent: normalizePercentage(totals.usedGB, totals.totalGB)
+    };
+}
+
+function execSshCommand(conn: Client, command: string): Promise<string> {
+    return new Promise((resolve, reject) => {
+        conn.exec(command, (err, stream) => {
+            if (err) {
+                reject(err);
+                return;
+            }
+
+            let stdout = "";
+            let stderr = "";
+
+            stream.on("close", (code: number | null) => {
+                if (code && code !== 0 && stderr.trim()) {
+                    reject(new Error(stderr.trim()));
+                    return;
+                }
+
+                resolve(stdout.trim());
+            });
+
+            stream.on("data", (data: any) => {
+                stdout += data.toString();
+            });
+
+            stream.stderr.on("data", (data: any) => {
+                stderr += data.toString();
+            });
+        });
+    });
+}
+
+function connectSsh(server: ManagedServerRecord): Promise<Client> {
+    return new Promise((resolve, reject) => {
+        const conn = new Client();
+        const isWindows = server.type === "windows";
+        const port = isWindows ? (server.ssh_port || 22) : (server.port || 22);
+
+        conn.on("ready", () => resolve(conn));
+        conn.on("error", (error) => reject(error));
+
+        conn.connect({
+            host: server.ip,
+            port,
+            username: server.username?.trim() || "root",
+            password: server.password,
+            privateKey: server.privateKey,
+            passphrase: server.passphrase,
+            tryKeyboard: false,
+            hostVerifier: () => true,
+            readyTimeout: 20000
+        });
+    });
+}
+
+async function getLinuxStatus(conn: Client): Promise<StatusSnapshot> {
+    const [
+        hostname,
+        os,
+        uptimeSecondsRaw,
+        cpuUsageRaw,
+        memoryRaw,
+        disksRaw,
+        processesRaw,
+        loadRaw
+    ] = await Promise.all([
+        execSshCommand(conn, "hostname"),
+        execSshCommand(conn, "bash -lc 'if [ -f /etc/os-release ]; then . /etc/os-release && printf \"%s\" \"$PRETTY_NAME\"; else uname -sr; fi'"),
+        execSshCommand(conn, "bash -lc 'cut -d. -f1 /proc/uptime'"),
+        execSshCommand(conn, "bash -lc \"top -bn1 | grep 'Cpu(s)' | sed -E 's/.*, *([0-9.]+)%* id.*/\\\\1/' | awk '{printf \\\"%.2f\\\", 100 - \\$1}'\""),
+        execSshCommand(conn, "bash -lc \"awk '/MemTotal/ {total=$2} /MemAvailable/ {avail=$2} END {printf \\\"%d %d\\\", int(total/1024), int(avail/1024)}' /proc/meminfo\""),
+        execSshCommand(conn, "bash -lc 'df -P -BM --output=source,size,used,avail,pcent,target 2>/dev/null | tail -n +2'"),
+        execSshCommand(conn, "bash -lc 'ps -eo pid,comm,%cpu,%mem,rss --sort=-%cpu | head -n 6 | tail -n +2'"),
+        execSshCommand(conn, "bash -lc \"cat /proc/loadavg | awk '{printf \\\"%s %s %s\\\", \\$1, \\$2, \\$3}'\"")
+    ]);
+
+    const [totalMemoryMB, freeMemoryMB] = memoryRaw.split(/\s+/).map(value => parseInt(value, 10));
+    const usedMemoryMB = Math.max(0, totalMemoryMB - freeMemoryMB);
+    const disks = parseLinuxDisks(disksRaw);
+    const storage = aggregateStorage(disks);
+    const [one = 0, five = 0, fifteen = 0] = loadRaw.split(/\s+/).map(value => parseFloat(value));
+
+    return {
+        platform: "linux",
+        hostname,
+        os,
+        uptime: formatUptime(parseInt(uptimeSecondsRaw, 10)),
+        cpuUsagePercent: roundTo(parseFloat(cpuUsageRaw.replace(',', '.')) || 0, 1),
+        memory: {
+            totalMB: totalMemoryMB,
+            usedMB: usedMemoryMB,
+            freeMB: freeMemoryMB,
+            usagePercent: normalizePercentage(usedMemoryMB, totalMemoryMB)
+        },
+        storage,
+        disks,
+        processes: parseLinuxProcesses(processesRaw),
+        loadAverage: {
+            one: roundTo(one, 2),
+            five: roundTo(five, 2),
+            fifteen: roundTo(fifteen, 2)
+        }
+    };
+}
+
+async function getWindowsStatus(conn: Client): Promise<StatusSnapshot> {
+    const summaryRaw = await execSshCommand(
+        conn,
+        `powershell -NoProfile -Command "$os=Get-CimInstance Win32_OperatingSystem; $cpu=(Get-CimInstance Win32_Processor | Measure-Object -Property LoadPercentage -Average).Average; [pscustomobject]@{ hostname=$env:COMPUTERNAME; os=$os.Caption; uptime=((Get-Date)-$os.LastBootUpTime).ToString('dd\\.hh\\:mm\\:ss'); cpuUsagePercent=[math]::Round($cpu,2); totalMemoryMB=[math]::Round($os.TotalVisibleMemorySize/1024,2); freeMemoryMB=[math]::Round($os.FreePhysicalMemory/1024,2) } | ConvertTo-Json -Compress"`
+    );
+    const disksRaw = await execSshCommand(
+        conn,
+        `powershell -NoProfile -Command "Get-CimInstance Win32_LogicalDisk -Filter 'DriveType=3' | Select-Object @{N='name';E={$_.DeviceID}}, @{N='mount';E={$_.DeviceID}}, @{N='totalGB';E={[math]::Round($_.Size/1GB,1)}}, @{N='freeGB';E={[math]::Round($_.FreeSpace/1GB,1)}}, @{N='usedGB';E={[math]::Round(($_.Size-$_.FreeSpace)/1GB,1)}}, @{N='usagePercent';E={if($_.Size -gt 0){[math]::Round((($_.Size-$_.FreeSpace)/$_.Size)*100,1)}else{0}}} | ConvertTo-Json -Compress"`
+    );
+    const processesRaw = await execSshCommand(
+        conn,
+        `powershell -NoProfile -Command "Get-Process | Sort-Object CPU -Descending | Select-Object -First 5 @{N='pid';E={$_.Id}}, @{N='name';E={$_.ProcessName}}, @{N='cpuPercent';E={[math]::Round($_.CPU,1)}}, @{N='memoryMB';E={[math]::Round($_.WorkingSet64/1MB,1)}} | ConvertTo-Json -Compress"`
+    );
+
+    const summary = JSON.parse(summaryRaw);
+    const disks = ensureArray<any>(JSON.parse(disksRaw)).map((disk) => ({
+        name: disk.name,
+        mount: disk.mount,
+        totalGB: Number(disk.totalGB) || 0,
+        usedGB: Number(disk.usedGB) || 0,
+        freeGB: Number(disk.freeGB) || 0,
+        usagePercent: Number(disk.usagePercent) || 0
+    })) satisfies StatusDisk[];
+    const storage = aggregateStorage(disks);
+    const totalMemoryMB = Number(summary.totalMemoryMB) || 0;
+    const freeMemoryMB = Number(summary.freeMemoryMB) || 0;
+    const usedMemoryMB = roundTo(Math.max(0, totalMemoryMB - freeMemoryMB), 1);
+
+    return {
+        platform: "windows",
+        hostname: summary.hostname,
+        os: summary.os,
+        uptime: summary.uptime,
+        cpuUsagePercent: Number(summary.cpuUsagePercent) || 0,
+        memory: {
+            totalMB: totalMemoryMB,
+            usedMB: usedMemoryMB,
+            freeMB: freeMemoryMB,
+            usagePercent: normalizePercentage(usedMemoryMB, totalMemoryMB)
+        },
+        storage,
+        disks,
+        processes: ensureArray<any>(JSON.parse(processesRaw)).map((process) => ({
+            pid: Number(process.pid) || 0,
+            name: process.name,
+            cpuPercent: Number(process.cpuPercent) || 0,
+            memoryMB: Number(process.memoryMB) || 0
+        })),
+        loadAverage: null
+    };
 }
 
 async function callMiniMaxCompatibleAnthropicApi(apiKey: string, modelName: string, fullPrompt: string): Promise<string> {
@@ -334,6 +646,35 @@ app.delete("/api/servers/:id", (req, res) => {
         }
         res.json({ "message": "deleted", changes: this.changes });
     });
+});
+
+app.get("/api/servers/:id/status", async (req, res) => {
+    try {
+        const server = await getDbRow<ManagedServerRecord>("SELECT * FROM servers WHERE id = ?", [req.params.id]);
+
+        if (!server) {
+            return res.status(404).json({ error: "Server not found" });
+        }
+
+        if (server.type === "ftp" || server.type === "s3") {
+            return res.status(400).json({ error: "Status dashboard is only available for SSH-capable servers." });
+        }
+
+        const conn = await connectSsh(server);
+
+        try {
+            const snapshot = server.type === "windows"
+                ? await getWindowsStatus(conn)
+                : await getLinuxStatus(conn);
+
+            res.json(snapshot);
+        } finally {
+            conn.end();
+        }
+    } catch (error: any) {
+        console.error("Status dashboard error:", error);
+        res.status(500).json({ error: error.message || "Failed to collect server status" });
+    }
 });
 
 
