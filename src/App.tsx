@@ -26,6 +26,16 @@ const stripAnsiCodes = (value: string) =>
 const normalizeTerminalText = (value: string) =>
     stripAnsiCodes(value).replace(/\r/g, '');
 
+const summarizeIssueText = (value: string, maxLength = 180) => {
+    const compact = value
+        .replace(/\s+/g, ' ')
+        .replace(/\s*([;:,])\s*/g, '$1 ')
+        .trim();
+
+    if (compact.length <= maxLength) return compact;
+    return `${compact.slice(0, maxLength).trimEnd()}...`;
+};
+
 function App() {
     const [activeServer, setActiveServer] = useState<any>(null);
     const [activeTab, setActiveTab] = useState<'ssh' | 'rdp' | 'sftp' | 'status'>('ssh');
@@ -43,8 +53,14 @@ function App() {
     const lastTerminalIssueIdRef = useRef<string | null>(null);
 
     const recordTerminalIssue = (type: TerminalIssueType, message: string, details?: string) => {
-        const normalizedMessage = message.trim();
-        const normalizedDetails = details?.trim();
+        const normalizedMessage = summarizeIssueText(message);
+        const normalizedDetails = details
+            ?.split(/\n+/)
+            .map(line => line.trim())
+            .filter(Boolean)
+            .slice(0, 4)
+            .map(line => summarizeIssueText(line, 220))
+            .join('\n');
         const issueKey = `${type}:${normalizedMessage}:${normalizedDetails || ''}`.toLowerCase();
         const now = Date.now();
         const lastSeenAt = recentTerminalIssueKeysRef.current.get(issueKey) || 0;
@@ -74,7 +90,7 @@ function App() {
     };
 
     const appendTerminalIssueDetails = (detailsLine: string) => {
-        const trimmedDetails = detailsLine.trim();
+        const trimmedDetails = summarizeIssueText(detailsLine, 220);
         if (!trimmedDetails || !lastTerminalIssueIdRef.current) return;
 
         setTerminalIssues(prev => {
@@ -166,9 +182,15 @@ function App() {
             }
         }
 
-        const rawIssueMatch = cleanOutput.match(/(?:^|\n)(.*?(?:permission denied|command not found|not recognized|no such file or directory|cannot find path|access denied|refused|timed out|fatal|error:|exception|authentication failed|auth failed|forbidden).*)/i);
-        if (rawIssueMatch?.[1]) {
-            recordTerminalIssue('error', rawIssueMatch[1]);
+        const fallbackIssueLine = cleanOutput
+            .split(/\n+/)
+            .map(line => line.trim())
+            .filter(Boolean)
+            .reverse()
+            .find(line => classifyTerminalLine(line) === 'error');
+
+        if (fallbackIssueLine) {
+            recordTerminalIssue('error', fallbackIssueLine);
         }
     };
 

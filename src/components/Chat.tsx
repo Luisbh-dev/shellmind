@@ -573,13 +573,13 @@ export default function Chat({
                                     Last SSH issue
                                 </div>
                                 <div className={clsx(
-                                    "text-xs font-medium",
+                                    "text-xs font-medium break-words max-h-24 overflow-hidden",
                                     latestIssue.type === "error" ? "text-red-300" : "text-amber-300"
                                 )}>
                                     {latestIssue.message}
                                 </div>
                                 {latestIssue.details && (
-                                    <div className="text-[10px] text-zinc-500 mt-1 font-mono truncate">
+                                    <div className="text-[10px] text-zinc-500 mt-1 font-mono max-h-10 overflow-hidden break-words">
                                         {latestIssue.details}
                                     </div>
                                 )}
