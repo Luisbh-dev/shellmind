@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Send, Bot, RotateCw, Sparkles, Play, Zap, Terminal, AlertTriangle, X } from "lucide-react";
+import { Send, Bot, RotateCw, Sparkles, Play, Zap, Terminal, AlertTriangle, Star } from "lucide-react";
 import { clsx } from "clsx";
 import ReactMarkdown from "react-markdown";
 
@@ -24,6 +24,16 @@ interface ChatProps {
     terminalHistory?: React.MutableRefObject<string>;
     terminalIssues?: TerminalIssue[];
 }
+
+const MODEL_OPTIONS = [
+    { value: "MiniMax-M2.7", label: "MiniMax M2.7" },
+    { value: "gemini-2.5-flash", label: "Flash 2.5 (Smart)" },
+    { value: "gemini-3-flash-preview", label: "Flash 3 (Smartest)" },
+    { value: "gemma-3-27b-it", label: "Gemma 3 (Standard)" }
+] as const;
+const HIDDEN_MODEL_LABELS: Record<string, string> = {
+    "MiniMax-M2.7-highspeed": "MiniMax M2.7 Highspeed"
+};
 
 const DIAGNOSTIC_PROMPT = "Analyze the latest SSH terminal failure and give me the exact command to fix it.";
 
@@ -58,44 +68,20 @@ export default function Chat({ activeServer, terminalHistory, terminalIssues }: 
     const [input, setInput] = useState("");
     const [isLoading, setIsLoading] = useState(false);
     const [isAutoRun, setIsAutoRun] = useState(false);
-    const [selectedModel, setSelectedModel] = useState("gemini-2.5-flash");
+    const [selectedModel, setSelectedModel] = useState(MODEL_OPTIONS[0].value);
     const [fixItLoading, setFixItLoading] = useState(false);
     const [fixItSuggestion, setFixItSuggestion] = useState("");
-    const [issueToast, setIssueToast] = useState<TerminalIssue | null>(null);
     const [autoRunConfirmOpen, setAutoRunConfirmOpen] = useState(false);
 
     const messagesContainerRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLTextAreaElement>(null);
     const pendingFixItRequestRef = useRef(0);
-    const issueToastTimerRef = useRef<number | null>(null);
-    const lastAnnouncedIssueIdRef = useRef<string | null>(null);
 
     const latestIssue = terminalIssues?.[terminalIssues.length - 1] || null;
     const recentIssues = terminalIssues?.slice(-3).reverse() || [];
-
-    useEffect(() => {
-        if (!latestIssue || latestIssue.id === lastAnnouncedIssueIdRef.current) {
-            return;
-        }
-
-        lastAnnouncedIssueIdRef.current = latestIssue.id;
-        setIssueToast(latestIssue);
-
-        if (issueToastTimerRef.current) {
-            window.clearTimeout(issueToastTimerRef.current);
-        }
-
-        issueToastTimerRef.current = window.setTimeout(() => {
-            setIssueToast(current => (current?.id === latestIssue.id ? null : current));
-        }, 6000);
-
-        return () => {
-            if (issueToastTimerRef.current) {
-                window.clearTimeout(issueToastTimerRef.current);
-                issueToastTimerRef.current = null;
-            }
-        };
-    }, [latestIssue?.id]);
+    const getModelLabel = (modelName: string) => MODEL_OPTIONS.find(option => option.value === modelName)?.label || HIDDEN_MODEL_LABELS[modelName] || modelName;
+    const normalizeSelectableModel = (modelName: string) => modelName === "MiniMax-M2.7-highspeed" ? "MiniMax-M2.7" : modelName;
+    const isRecommendedModelSelected = normalizeSelectableModel(selectedModel) === "MiniMax-M2.7";
 
     const diagnosticPromptValue = latestIssue
         ? `${DIAGNOSTIC_PROMPT}\n\nRecent terminal issues:\n${terminalIssues?.slice(-8).map(formatIssueEntry).join("\n")}\n\nActive server: ${activeServer ? `${activeServer.name} (${activeServer.osDetail || activeServer.type})` : "None"}`
@@ -107,7 +93,7 @@ export default function Chat({ activeServer, terminalHistory, terminalIssues }: 
         fetch("http://localhost:3001/api/config/model")
             .then(res => res.json())
             .then(data => {
-                if (data.model) setSelectedModel(data.model);
+                if (data.model) setSelectedModel(normalizeSelectableModel(data.model));
             })
             .catch(err => console.error("Failed to load model config", err));
     }, []);
@@ -153,13 +139,6 @@ export default function Chat({ activeServer, terminalHistory, terminalIssues }: 
             }
         ]);
         setFixItSuggestion("");
-        setIssueToast(null);
-        lastAnnouncedIssueIdRef.current = null;
-
-        if (issueToastTimerRef.current) {
-            window.clearTimeout(issueToastTimerRef.current);
-            issueToastTimerRef.current = null;
-        }
     }, [activeServer?.id]);
 
     useEffect(() => {
@@ -363,12 +342,14 @@ export default function Chat({ activeServer, terminalHistory, terminalIssues }: 
             const responseContent = data.response || "Sorry, I couldn't process that.";
 
             if (data.usedModel && data.usedModel !== selectedModel) {
-                setSelectedModel(data.usedModel);
-                const displayModelName = data.usedModel.includes("gemma") ? "Gemma 3 (Standard)" : "Flash 2.5 (Smart)";
+                const normalizedUsedModel = normalizeSelectableModel(data.usedModel);
+                if (normalizedUsedModel !== selectedModel) {
+                    setSelectedModel(normalizedUsedModel);
+                }
                 setMessages(prev => [...prev, {
                     id: "sys-switch-" + Date.now(),
                     role: "assistant",
-                    content: `WARNING: Automatically switched to **${displayModelName}** due to provider limits.`
+                    content: `WARNING: Automatically switched to **${getModelLabel(data.usedModel)}** due to provider limits.`
                 }]);
             }
 
@@ -459,15 +440,36 @@ export default function Chat({ activeServer, terminalHistory, terminalIssues }: 
                     <Sparkles className="w-3.5 h-3.5 text-teal-500" />
                     {!isElectron && <span className="font-bold text-xs text-zinc-300 uppercase tracking-wider hidden sm:inline">AI Assistant</span>}
 
-                    <select
-                        value={selectedModel}
-                        onChange={(e) => handleModelChange(e.target.value)}
-                        className="bg-zinc-900 text-[10px] text-zinc-400 border border-zinc-700 rounded px-1 py-0.5 outline-none focus:border-teal-500 ml-2"
-                    >
-                        <option value="gemini-2.5-flash">Flash 2.5 (Smart)</option>
-                        <option value="gemini-3-flash-preview">Flash 3 (Smartest)</option>
-                        <option value="gemma-3-27b-it">Gemma 3 (Standard)</option>
-                    </select>
+                    <div className="ml-2 flex items-center gap-1.5">
+                        {isRecommendedModelSelected && (
+                            <div
+                                className="flex items-center justify-center rounded bg-amber-500/15 border border-amber-500/30 text-amber-300 px-1.5 py-1"
+                                title="Recommended model"
+                            >
+                                <Star className="w-3 h-3 fill-current" />
+                            </div>
+                        )}
+                        <select
+                            value={selectedModel}
+                            onChange={(e) => handleModelChange(e.target.value)}
+                            className={clsx(
+                                "text-[10px] border rounded px-1 py-0.5 outline-none bg-zinc-900 text-zinc-100",
+                                isRecommendedModelSelected
+                                    ? "border-amber-500/40 focus:border-amber-400"
+                                    : "border-zinc-700 focus:border-teal-500"
+                            )}
+                        >
+                            {MODEL_OPTIONS.map((option) => (
+                                <option
+                                    key={option.value}
+                                    value={option.value}
+                                    style={{ backgroundColor: "#18181b", color: "#f4f4f5" }}
+                                >
+                                    {option.label}
+                                </option>
+                            ))}
+                        </select>
+                    </div>
                 </div>
                 <div className="flex items-center gap-2" style={{ WebkitAppRegion: "no-drag" } as any}>
                     <button
@@ -531,43 +533,6 @@ export default function Chat({ activeServer, terminalHistory, terminalIssues }: 
             </div>
 
             <div className="p-3 border-t border-zinc-800 bg-zinc-900/50 shrink-0" style={{ WebkitAppRegion: "no-drag" } as any}>
-                {issueToast && (
-                    <div className="mb-3 rounded border border-red-500/25 bg-red-500/10 px-3 py-2 shadow-sm">
-                        <div className="flex items-start justify-between gap-3">
-                            <div className="min-w-0">
-                                <div className="flex items-center gap-2 text-[10px] uppercase tracking-wider text-red-300 mb-1">
-                                    <AlertTriangle className="w-3 h-3 text-red-400" />
-                                    New SSH issue
-                                </div>
-                                <div className="text-xs text-red-100 font-medium truncate">
-                                    {issueToast.message}
-                                </div>
-                            </div>
-                            <div className="flex items-center gap-2 shrink-0">
-                                <button
-                                    onClick={() => setInput(diagnosticPromptValue)}
-                                    className="px-2 py-1 rounded border border-red-500/20 text-[10px] text-red-200 hover:bg-red-500/15 transition-colors"
-                                >
-                                    Analyze
-                                </button>
-                                <button
-                                    onClick={requestFixIt}
-                                    className="px-2 py-1 rounded border border-red-500/20 text-[10px] text-red-200 hover:bg-red-500/15 transition-colors"
-                                >
-                                    Fix it
-                                </button>
-                                <button
-                                    onClick={() => setIssueToast(null)}
-                                    className="p-1 rounded text-red-200/70 hover:text-red-100 hover:bg-red-500/10 transition-colors"
-                                    aria-label="Dismiss issue notice"
-                                >
-                                    <X className="w-3 h-3" />
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                )}
-
                 <div className="relative">
                     <textarea
                         ref={inputRef}

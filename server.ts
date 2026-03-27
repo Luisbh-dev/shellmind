@@ -11,6 +11,130 @@ import db from "./database";
 
 dotenv.config();
 
+type AiProvider = "gemini" | "minimax";
+type ConfigSource = "env" | "db" | "none";
+
+const DEFAULT_MODEL = "MiniMax-M2.7";
+const MINIMAX_ANTHROPIC_BASE_URL = process.env.MINIMAX_ANTHROPIC_BASE_URL || "https://api.minimax.io/anthropic/v1";
+const AI_PROVIDER_CONFIG: Record<AiProvider, { envKey: string; settingKey: string; label: string }> = {
+    gemini: {
+        envKey: "GEMINI_API_KEY",
+        settingKey: "GEMINI_API_KEY",
+        label: "Gemini"
+    },
+    minimax: {
+        envKey: "MINIMAX_API_KEY",
+        settingKey: "MINIMAX_API_KEY",
+        label: "MiniMax"
+    }
+};
+const MODEL_FALLBACKS: Record<string, string> = {
+    "gemini-3-flash-preview": "gemini-2.5-flash",
+    "gemini-2.5-flash": "gemma-3-27b-it",
+    "gemma-3-27b-it": "gemini-2.5-flash",
+    "MiniMax-M2.7": "MiniMax-M2.7-highspeed",
+    "MiniMax-M2.7-highspeed": "MiniMax-M2.7"
+};
+
+function isAiProvider(value: any): value is AiProvider {
+    return value === "gemini" || value === "minimax";
+}
+
+function getProviderForModel(modelName: string): AiProvider {
+    return modelName.startsWith("MiniMax-") ? "minimax" : "gemini";
+}
+
+function getSettingValue(key: string): Promise<string | null> {
+    return new Promise((resolve, reject) => {
+        db.get("SELECT value FROM settings WHERE key = ?", [key], (err, row: any) => {
+            if (err) {
+                reject(err);
+                return;
+            }
+
+            resolve(row?.value ?? null);
+        });
+    });
+}
+
+async function getProviderApiKey(provider: AiProvider): Promise<string | null> {
+    const config = AI_PROVIDER_CONFIG[provider];
+    const envValue = process.env[config.envKey];
+    if (envValue) return envValue;
+    return getSettingValue(config.settingKey);
+}
+
+async function getProviderStatus(provider: AiProvider): Promise<{ configured: boolean; source: ConfigSource }> {
+    const config = AI_PROVIDER_CONFIG[provider];
+
+    if (process.env[config.envKey]) {
+        return { configured: true, source: "env" };
+    }
+
+    const savedKey = await getSettingValue(config.settingKey);
+    if (savedKey) {
+        return { configured: true, source: "db" };
+    }
+
+    return { configured: false, source: "none" };
+}
+
+function isRetryableAiError(message: string): boolean {
+    const normalized = message.toLowerCase();
+    return normalized.includes("429") ||
+        normalized.includes("503") ||
+        normalized.includes("quota") ||
+        normalized.includes("rate limit") ||
+        normalized.includes("overloaded") ||
+        normalized.includes("timeout");
+}
+
+async function callMiniMaxCompatibleAnthropicApi(apiKey: string, modelName: string, fullPrompt: string): Promise<string> {
+    const apiResponse = await fetch(`${MINIMAX_ANTHROPIC_BASE_URL}/messages`, {
+        method: "POST",
+        headers: {
+            "content-type": "application/json",
+            "x-api-key": apiKey,
+            "anthropic-version": "2023-06-01"
+        },
+        body: JSON.stringify({
+            model: modelName,
+            max_tokens: 4096,
+            system: "You are a helpful assistant.",
+            messages: [
+                {
+                    role: "user",
+                    content: [
+                        {
+                            type: "text",
+                            text: fullPrompt
+                        }
+                    ]
+                }
+            ]
+        })
+    });
+
+    const payload = await apiResponse.json().catch(() => null);
+
+    if (!apiResponse.ok) {
+        const errorMessage = payload?.error?.message || payload?.message || apiResponse.statusText || "Unknown MiniMax API error";
+        throw new Error(`${apiResponse.status} ${errorMessage}`.trim());
+    }
+
+    const text = (Array.isArray(payload?.content) ? payload.content : [])
+        .filter((block: any) => block?.type === "text" && typeof block?.text === "string")
+        .map((block: any) => block.text)
+        .join("\n")
+        .trim();
+
+    if (!text) {
+        throw new Error("MiniMax returned no text content.");
+    }
+
+    return text;
+}
+
 const app = express();
 const httpServer = createServer(app);
 const io = new Server(httpServer, {
@@ -25,7 +149,6 @@ app.use(cors());
 app.use(express.json());
 
 const PORT = 3001; // Backend port
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 
 // --- API Routes ---
 
@@ -150,28 +273,36 @@ app.delete("/api/servers/:id", (req, res) => {
 // --- Configuration Routes ---
 
 // Check if API Key is configured
-app.get("/api/config/status", (req, res) => {
-    if (process.env.GEMINI_API_KEY) {
-        return res.json({ configured: true, source: "env" });
+app.get("/api/config/status", async (req, res) => {
+    try {
+        const providers = {
+            gemini: await getProviderStatus("gemini"),
+            minimax: await getProviderStatus("minimax")
+        };
+
+        res.json({
+            configured: providers.gemini.configured,
+            source: providers.gemini.source,
+            providers
+        });
+    } catch (error: any) {
+        res.status(500).json({ error: error.message });
     }
-    db.get("SELECT value FROM settings WHERE key = 'GEMINI_API_KEY'", [], (err, row: any) => {
-        if (row && row.value) {
-            res.json({ configured: true, source: "db" });
-        } else {
-            res.json({ configured: false, source: "none" });
-        }
-    });
 });
 
 // Set API Key (only if not in env)
 app.post("/api/config/apikey", (req, res) => {
-    if (process.env.GEMINI_API_KEY) {
-        return res.status(403).json({ error: "API Key is already set via Environment Variables." });
+    const provider: AiProvider = isAiProvider(req.body.provider) ? req.body.provider : "gemini";
+    const providerConfig = AI_PROVIDER_CONFIG[provider];
+
+    if (process.env[providerConfig.envKey]) {
+        return res.status(403).json({ error: `${providerConfig.label} API Key is already set via Environment Variables.` });
     }
+
     const { key } = req.body;
     if (!key) return res.status(400).json({ error: "Key is required" });
 
-    db.run("INSERT OR REPLACE INTO settings (key, value) VALUES ('GEMINI_API_KEY', ?)", [key], (err) => {
+    db.run("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", [providerConfig.settingKey, key], (err) => {
         if (err) return res.status(500).json({ error: err.message });
         res.json({ message: "success" });
     });
@@ -181,7 +312,7 @@ app.post("/api/config/apikey", (req, res) => {
 app.get("/api/config/model", (req, res) => {
     db.get("SELECT value FROM settings WHERE key = 'PREFERRED_MODEL'", [], (err, row: any) => {
         if (err) return res.status(500).json({ error: err.message });
-        res.json({ model: row ? row.value : "gemini-2.5-flash" });
+        res.json({ model: row ? row.value : DEFAULT_MODEL });
     });
 });
 
@@ -200,39 +331,25 @@ app.post("/api/chat", async (req: any, res: any) => {
     try {
         const { message, context, model: requestedModel } = req.body;
 
-        let apiKey = process.env.GEMINI_API_KEY;
-
-        // If not in env, check DB
-        if (!apiKey) {
-            const row: any = await new Promise((resolve, reject) => {
-                db.get("SELECT value FROM settings WHERE key = 'GEMINI_API_KEY'", [], (err, row) => {
-                    if (err) reject(err);
-                    else resolve(row);
-                });
-            });
-            if (row && row.value) {
-                apiKey = row.value;
-            }
-        }
-
-        if (!apiKey) {
-            return res.json({ response: "Please set your GEMINI_API_KEY in Settings or Environment variables." });
-        }
-
         // Determine Model
         let targetModel = requestedModel;
         if (!targetModel) {
-            // Check DB if not provided in request
-            const row: any = await new Promise((resolve) => {
-                db.get("SELECT value FROM settings WHERE key = 'PREFERRED_MODEL'", [], (err, row) => resolve(row));
-            });
-            // Default to Flash if nothing configured 
-            targetModel = (row && row.value) ? row.value : "gemini-2.5-flash";
+            const preferredModel = await getSettingValue("PREFERRED_MODEL");
+            targetModel = preferredModel || DEFAULT_MODEL;
         }
 
-        console.log(`[Chat] Using Gemini Model: ${targetModel}`);
+        const targetProvider = getProviderForModel(targetModel);
+        const apiKey = await getProviderApiKey(targetProvider);
 
-        const genAI = new GoogleGenerativeAI(apiKey);
+        if (!apiKey) {
+            return res.json({
+                response: `Please set your ${AI_PROVIDER_CONFIG[targetProvider].envKey} in Settings or Environment variables.`
+            });
+        }
+
+        console.log(`[Chat] Using ${AI_PROVIDER_CONFIG[targetProvider].label} model: ${targetModel}`);
+
+        const genAI = targetProvider === "gemini" ? new GoogleGenerativeAI(apiKey) : null;
 
         const SYSTEM_PROMPT = `You are ShellMind AI, an expert Linux/Windows System Administrator assistant. 
     Your goal is to help manage servers, write scripts, debug errors, and explain commands.
@@ -303,6 +420,15 @@ app.post("/api/chat", async (req: any, res: any) => {
 
         const tryGenerate = async (modelName: string) => {
             console.log(`[Chat] Attempting with model: ${modelName}`);
+
+            if (getProviderForModel(modelName) === "minimax") {
+                return callMiniMaxCompatibleAnthropicApi(apiKey, modelName, fullPrompt);
+            }
+
+            if (!genAI) {
+                throw new Error("Gemini client is not available.");
+            }
+
             const model = genAI.getGenerativeModel({
                 model: modelName,
                 safetySettings: [
@@ -313,27 +439,28 @@ app.post("/api/chat", async (req: any, res: any) => {
                 ]
             });
             const result = await model.generateContent(fullPrompt);
-            return await result.response;
+            const response = await result.response;
+            return response.text();
         };
 
-        let response;
+        let text: string;
         let usedModel = targetModel;
 
         try {
-            response = await tryGenerate(targetModel);
+            text = await tryGenerate(targetModel);
         } catch (err: any) {
             console.error(`[Chat] Error with ${targetModel}:`, err.message);
 
             // Check for retryable errors (Quota, Overloaded, Timeout)
-            const isRetryable = err.message.includes("429") || err.message.includes("503") || err.message.includes("quota");
+            const isRetryable = isRetryableAiError(err.message);
 
-            if (isRetryable) {
-                // Swap model
-                const fallbackModel = targetModel.includes("gemma") ? "gemini-2.5-flash" : "gemma-3-27b-it";
+            const fallbackModel = MODEL_FALLBACKS[targetModel];
+
+            if (isRetryable && fallbackModel) {
                 console.log(`[Chat] ⚠️ Quota/Error limit reached. Auto-switching to fallback: ${fallbackModel}`);
                 usedModel = fallbackModel;
                 try {
-                    response = await tryGenerate(fallbackModel);
+                    text = await tryGenerate(fallbackModel);
                 } catch (fallbackErr: any) {
                     throw new Error(`All models failed. Primary: ${err.message}. Fallback: ${fallbackErr.message}`);
                 }
@@ -341,8 +468,6 @@ app.post("/api/chat", async (req: any, res: any) => {
                 throw err;
             }
         }
-
-        let text = response.text();
 
         // --- HOTFIX: Gemma 3 Auto-Correction ---
         // The model persistently starts commands with '-Command' despite instructions.
@@ -357,7 +482,7 @@ app.post("/api/chat", async (req: any, res: any) => {
 
         res.json({ response: text, usedModel: usedModel });
     } catch (error: any) {
-        console.error("Error calling Gemini API:", error);
+        console.error("Error calling AI provider:", error);
         res.status(500).json({ response: "Error processing your request: " + error.message });
     }
 });
