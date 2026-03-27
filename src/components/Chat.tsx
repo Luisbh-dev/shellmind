@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Send, Bot, RotateCw, Sparkles, Play, Zap, Terminal, AlertTriangle, Star } from "lucide-react";
+import { Send, Bot, RotateCw, Sparkles, Play, Zap, Terminal, AlertTriangle, Star, X } from "lucide-react";
 import { clsx } from "clsx";
 import ReactMarkdown from "react-markdown";
 
@@ -23,6 +23,8 @@ interface ChatProps {
     activeServer: any;
     terminalHistory?: React.MutableRefObject<string>;
     terminalIssues?: TerminalIssue[];
+    onDismissTerminalIssue?: (issueId: string) => void;
+    onClearTerminalIssues?: () => void;
 }
 
 const MODEL_OPTIONS = [
@@ -61,7 +63,13 @@ const extractCommandFromResponse = (text: string) => {
     return cleaned?.replace(/^[-*]\s*/, "").trim() || "";
 };
 
-export default function Chat({ activeServer, terminalHistory, terminalIssues }: ChatProps) {
+export default function Chat({
+    activeServer,
+    terminalHistory,
+    terminalIssues,
+    onDismissTerminalIssue,
+    onClearTerminalIssues
+}: ChatProps) {
     const [messages, setMessages] = useState<Message[]>([
         { id: "1", role: "assistant", content: "ShellMind AI ready. Select a server to begin." }
     ]);
@@ -578,6 +586,14 @@ export default function Chat({ activeServer, terminalHistory, terminalIssues }: 
                             </div>
                             <div className="flex shrink-0 gap-2">
                                 <button
+                                    onClick={() => latestIssue && onDismissTerminalIssue?.(latestIssue.id)}
+                                    className="px-2 py-1 rounded border border-zinc-700 text-[10px] text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 transition-colors flex items-center gap-1"
+                                    title="Dismiss this SSH issue"
+                                >
+                                    <X className="w-3 h-3" />
+                                    Close
+                                </button>
+                                <button
                                     onClick={() => setInput(diagnosticPromptValue)}
                                     className="px-2 py-1 rounded border border-zinc-700 text-[10px] text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 transition-colors flex items-center gap-1"
                                     title="Ask AI to analyze this SSH error"
@@ -604,20 +620,40 @@ export default function Chat({ activeServer, terminalHistory, terminalIssues }: 
 
                         {recentIssues.length > 1 && (
                             <div className="mt-2 space-y-1">
-                                {recentIssues.map(issue => (
+                                <div className="flex justify-end">
                                     <button
-                                        key={issue.id}
-                                        onClick={() => setInput(`${DIAGNOSTIC_PROMPT}\n\nTerminal issue:\n${formatIssueEntry(issue)}\n\nActive server: ${activeServer ? `${activeServer.name} (${activeServer.osDetail || activeServer.type})` : "None"}`)}
-                                        className="block w-full text-left rounded border border-zinc-800/70 bg-black/30 px-2 py-1 hover:bg-zinc-900 hover:border-zinc-700 transition-colors"
-                                        title="Use this error in the AI prompt"
+                                        onClick={() => onClearTerminalIssues?.()}
+                                        className="text-[10px] text-zinc-500 hover:text-zinc-200 transition-colors"
+                                        title="Clear all SSH issues"
                                     >
-                                        <div className={clsx(
-                                            "text-[10px] font-medium truncate",
-                                            issue.type === "error" ? "text-red-300" : "text-amber-300"
-                                        )}>
-                                            {issue.message}
-                                        </div>
+                                        Clear all
                                     </button>
+                                </div>
+                                {recentIssues.map(issue => (
+                                    <div
+                                        key={issue.id}
+                                        className="flex items-center gap-2 rounded border border-zinc-800/70 bg-black/30 px-2 py-1"
+                                    >
+                                        <button
+                                            onClick={() => setInput(`${DIAGNOSTIC_PROMPT}\n\nTerminal issue:\n${formatIssueEntry(issue)}\n\nActive server: ${activeServer ? `${activeServer.name} (${activeServer.osDetail || activeServer.type})` : "None"}`)}
+                                            className="block min-w-0 flex-1 text-left hover:text-zinc-100 transition-colors"
+                                            title="Use this error in the AI prompt"
+                                        >
+                                            <div className={clsx(
+                                                "text-[10px] font-medium truncate",
+                                                issue.type === "error" ? "text-red-300" : "text-amber-300"
+                                            )}>
+                                                {issue.message}
+                                            </div>
+                                        </button>
+                                        <button
+                                            onClick={() => onDismissTerminalIssue?.(issue.id)}
+                                            className="shrink-0 rounded p-1 text-zinc-500 hover:bg-zinc-800 hover:text-zinc-200 transition-colors"
+                                            title="Dismiss this SSH issue"
+                                        >
+                                            <X className="w-3 h-3" />
+                                        </button>
+                                    </div>
                                 ))}
                             </div>
                         )}

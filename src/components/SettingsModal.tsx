@@ -46,6 +46,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [savingProvider, setSavingProvider] = useState<ProviderKey | null>(null);
   const [deletingProvider, setDeletingProvider] = useState<ProviderKey | null>(null);
+  const [deleteConfirmProvider, setDeleteConfirmProvider] = useState<ProviderKey | null>(null);
   const [connError, setConnError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -95,10 +96,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     }
   };
 
-  const handleDelete = async (provider: ProviderKey) => {
-    const confirmed = window.confirm(`Delete the saved ${PROVIDER_COPY[provider].label} API key from this app?`);
-    if (!confirmed) return;
-
+  const confirmDelete = async (provider: ProviderKey) => {
     setDeletingProvider(provider);
     try {
       const res = await fetch('http://localhost:3001/api/config/apikey', {
@@ -110,6 +108,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
       if (res.ok) {
         await fetchStatus();
         setApiKeys(prev => ({ ...prev, [provider]: '' }));
+        setDeleteConfirmProvider(null);
         alert(`${PROVIDER_COPY[provider].label} API Key deleted successfully!`);
       } else {
         const err = await res.json();
@@ -226,7 +225,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                               {hasSavedKey && (
                                 <button
                                   type="button"
-                                  onClick={() => handleDelete(provider)}
+                                  onClick={() => setDeleteConfirmProvider(provider)}
                                   disabled={deletingProvider === provider || savingProvider === provider}
                                   className="px-3 py-2 border border-red-900/60 bg-red-950/30 hover:bg-red-950/50 text-red-300 text-xs font-bold rounded flex items-center gap-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                                 >
@@ -258,6 +257,55 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
           </div>
         </div>
       </div>
+
+      {deleteConfirmProvider && (
+        <div className="absolute inset-0 z-10 flex items-center justify-center bg-black/70 backdrop-blur-sm p-6">
+          <div className="w-full max-w-sm rounded-xl border border-zinc-800 bg-[#121212] shadow-2xl overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800 bg-zinc-900/50">
+              <div className="flex items-center gap-2">
+                <Trash2 className="w-4 h-4 text-red-400" />
+                <span className="text-sm font-bold text-zinc-200 uppercase tracking-wide">Delete API Key</span>
+              </div>
+              <button
+                onClick={() => setDeleteConfirmProvider(null)}
+                className="text-zinc-500 hover:text-white transition-colors"
+                disabled={deletingProvider === deleteConfirmProvider}
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-4 space-y-4">
+              <p className="text-sm text-zinc-300">
+                Delete the saved {PROVIDER_COPY[deleteConfirmProvider].label} API key from this app?
+              </p>
+              <p className="text-[11px] text-zinc-500">
+                This only removes the locally saved key. Environment variable keys are not affected.
+              </p>
+
+              <div className="flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setDeleteConfirmProvider(null)}
+                  disabled={deletingProvider === deleteConfirmProvider}
+                  className="px-3 py-2 rounded-lg border border-zinc-700 text-sm text-zinc-300 hover:bg-zinc-800 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void confirmDelete(deleteConfirmProvider)}
+                  disabled={deletingProvider === deleteConfirmProvider}
+                  className="px-3 py-2 rounded-lg bg-red-600 text-sm text-white font-medium hover:bg-red-500 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                >
+                  {deletingProvider === deleteConfirmProvider && <Loader2 className="w-3 h-3 animate-spin" />}
+                  Delete Key
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

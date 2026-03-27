@@ -98,6 +98,18 @@ function App() {
         });
     };
 
+    const dismissTerminalIssue = (issueId: string) => {
+        setTerminalIssues(prev => prev.filter(issue => issue.id !== issueId));
+        if (lastTerminalIssueIdRef.current === issueId) {
+            lastTerminalIssueIdRef.current = null;
+        }
+    };
+
+    const clearTerminalIssues = () => {
+        setTerminalIssues([]);
+        lastTerminalIssueIdRef.current = null;
+    };
+
     const classifyTerminalLine = (line: string): TerminalIssueType | null => {
         const trimmed = line.trim();
         if (!trimmed) return null;
@@ -413,6 +425,8 @@ function App() {
                             activeServer={activeServer}
                             terminalHistory={terminalHistoryRef}
                             terminalIssues={terminalIssues}
+                            onDismissTerminalIssue={dismissTerminalIssue}
+                            onClearTerminalIssues={clearTerminalIssues}
                         />
                     </div>
                 </aside>
