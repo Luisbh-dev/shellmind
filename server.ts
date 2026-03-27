@@ -98,7 +98,6 @@ const MODEL_FALLBACKS: Record<string, string> = {
     "gemini-2.5-flash": "gemma-3-27b-it",
     "gemma-3-27b-it": "gemini-2.5-flash",
     "MiniMax-M2.7": "MiniMax-M2.7-highspeed",
-    "MiniMax-M2.7-highspeed": "MiniMax-M2.7"
 };
 
 function isAiProvider(value: any): value is AiProvider {
