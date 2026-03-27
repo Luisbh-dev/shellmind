@@ -13,6 +13,10 @@ dotenv.config();
 
 type AiProvider = "gemini" | "minimax";
 type ConfigSource = "env" | "db" | "none";
+type ProviderStatus = {
+    configured: boolean;
+    source: ConfigSource;
+};
 type ManagedServerRecord = {
     id: number;
     name: string;
@@ -69,7 +73,14 @@ type StatusSnapshot = {
 };
 
 const DEFAULT_MODEL = "MiniMax-M2.7";
-const MINIMAX_ANTHROPIC_BASE_URL = process.env.MINIMAX_ANTHROPIC_BASE_URL || "https://api.minimax.io/anthropic/v1";
+const DEFAULT_MINIMAX_PROXY_URL = "https://ia.shellmind.app";
+const MINIMAX_PROXY_URL = (process.env.MINIMAX_PROXY_URL?.trim() || DEFAULT_MINIMAX_PROXY_URL).replace(/\/+$/, "");
+const MINIMAX_PROXY_BASE_URL = MINIMAX_PROXY_URL.endsWith("/anthropic/v1")
+    ? MINIMAX_PROXY_URL
+    : `${MINIMAX_PROXY_URL}/anthropic/v1`;
+const ALLOW_CLIENT_MINIMAX_KEY = !/^(0|false|no|off)$/i.test(process.env.ALLOW_CLIENT_MINIMAX_KEY || "true");
+const MINIMAX_PROXY_API_KEY = process.env.MINIMAX_PROXY_API_KEY?.trim() || "";
+const MINIMAX_PROXY_BEARER_TOKEN = process.env.MINIMAX_PROXY_BEARER_TOKEN?.trim() || "";
 const AI_PROVIDER_CONFIG: Record<AiProvider, { envKey: string; settingKey: string; label: string }> = {
     gemini: {
         envKey: "GEMINI_API_KEY",
@@ -131,7 +142,7 @@ async function getProviderApiKey(provider: AiProvider): Promise<string | null> {
     return getSettingValue(config.settingKey);
 }
 
-async function getProviderStatus(provider: AiProvider): Promise<{ configured: boolean; source: ConfigSource }> {
+async function getProviderStatus(provider: AiProvider): Promise<ProviderStatus> {
     const config = AI_PROVIDER_CONFIG[provider];
 
     if (process.env[config.envKey]) {
@@ -144,6 +155,17 @@ async function getProviderStatus(provider: AiProvider): Promise<{ configured: bo
     }
 
     return { configured: false, source: "none" };
+}
+
+function getMiniMaxProxyStatus(providerStatus: ProviderStatus) {
+    return {
+        enabled: true,
+        baseUrl: MINIMAX_PROXY_BASE_URL,
+        allowClientKey: ALLOW_CLIENT_MINIMAX_KEY,
+        usesProxyAuth: Boolean(MINIMAX_PROXY_API_KEY || MINIMAX_PROXY_BEARER_TOKEN),
+        localKeyConfigured: providerStatus.configured,
+        localKeySource: providerStatus.source
+    };
 }
 
 function isRetryableAiError(message: string): boolean {
@@ -468,14 +490,27 @@ async function getWindowsStatus(conn: Client): Promise<StatusSnapshot> {
     };
 }
 
-async function callMiniMaxCompatibleAnthropicApi(apiKey: string, modelName: string, fullPrompt: string): Promise<string> {
-    const apiResponse = await fetch(`${MINIMAX_ANTHROPIC_BASE_URL}/messages`, {
+async function callMiniMaxCompatibleAnthropicApi(clientApiKey: string | null, modelName: string, fullPrompt: string): Promise<string> {
+    const headers: Record<string, string> = {
+        "content-type": "application/json",
+        "anthropic-version": "2023-06-01"
+    };
+
+    if (MINIMAX_PROXY_API_KEY) {
+        headers["x-api-key"] = MINIMAX_PROXY_API_KEY;
+    }
+
+    if (MINIMAX_PROXY_BEARER_TOKEN) {
+        headers["authorization"] = `Bearer ${MINIMAX_PROXY_BEARER_TOKEN}`;
+    }
+
+    if (ALLOW_CLIENT_MINIMAX_KEY && clientApiKey) {
+        headers["x-minimax-api-key"] = clientApiKey;
+    }
+
+    const apiResponse = await fetch(`${MINIMAX_PROXY_BASE_URL}/messages`, {
         method: "POST",
-        headers: {
-            "content-type": "application/json",
-            "x-api-key": apiKey,
-            "anthropic-version": "2023-06-01"
-        },
+        headers,
         body: JSON.stringify({
             model: modelName,
             max_tokens: 4096,
@@ -691,7 +726,10 @@ app.get("/api/config/status", async (req, res) => {
         res.json({
             configured: providers.gemini.configured,
             source: providers.gemini.source,
-            providers
+            providers,
+            features: {
+                minimaxProxy: getMiniMaxProxyStatus(providers.minimax)
+            }
         });
     } catch (error: any) {
         res.status(500).json({ error: error.message });
@@ -702,6 +740,12 @@ app.get("/api/config/status", async (req, res) => {
 app.post("/api/config/apikey", (req, res) => {
     const provider: AiProvider = isAiProvider(req.body.provider) ? req.body.provider : "gemini";
     const providerConfig = AI_PROVIDER_CONFIG[provider];
+
+    if (provider === "minimax" && !ALLOW_CLIENT_MINIMAX_KEY) {
+        return res.status(403).json({
+            error: "MiniMax client keys are disabled. This app sends MiniMax traffic through the managed proxy."
+        });
+    }
 
     if (process.env[providerConfig.envKey]) {
         return res.status(403).json({ error: `${providerConfig.label} API Key is already set via Environment Variables.` });
@@ -752,16 +796,17 @@ app.post("/api/chat", async (req: any, res: any) => {
 
         const targetProvider = getProviderForModel(targetModel);
         const apiKey = await getProviderApiKey(targetProvider);
+        const isMiniMaxProxyMode = targetProvider === "minimax";
 
-        if (!apiKey) {
+        if (targetProvider === "gemini" && !apiKey) {
             return res.json({
                 response: `Please set your ${AI_PROVIDER_CONFIG[targetProvider].envKey} in Settings or Environment variables.`
             });
         }
 
-        console.log(`[Chat] Using ${AI_PROVIDER_CONFIG[targetProvider].label} model: ${targetModel}`);
+        console.log(`[Chat] Using ${AI_PROVIDER_CONFIG[targetProvider].label} model: ${targetModel}${isMiniMaxProxyMode ? ` via proxy ${MINIMAX_PROXY_BASE_URL}${ALLOW_CLIENT_MINIMAX_KEY && apiKey ? " with client key" : ""}` : ""}`);
 
-        const genAI = targetProvider === "gemini" ? new GoogleGenerativeAI(apiKey) : null;
+        const genAI = targetProvider === "gemini" && apiKey ? new GoogleGenerativeAI(apiKey) : null;
 
         const SYSTEM_PROMPT = `You are ShellMind AI, an expert Linux/Windows System Administrator assistant. 
     Your goal is to help manage servers, write scripts, debug errors, and explain commands.

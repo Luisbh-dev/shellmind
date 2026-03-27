@@ -8,7 +8,19 @@ interface SettingsModalProps {
 
 type ProviderKey = 'gemini' | 'minimax';
 type ProviderStatus = { configured: boolean; source: 'env' | 'db' | 'none' };
-type SettingsStatus = { providers: Record<ProviderKey, ProviderStatus> };
+type SettingsStatus = {
+  providers: Record<ProviderKey, ProviderStatus>;
+  features?: {
+    minimaxProxy?: {
+      enabled: boolean;
+      baseUrl: string;
+      allowClientKey: boolean;
+      usesProxyAuth: boolean;
+      localKeyConfigured: boolean;
+      localKeySource: 'env' | 'db' | 'none';
+    };
+  };
+};
 
 const PROVIDER_COPY: Record<ProviderKey, { label: string; placeholder: string; helpUrl: string; helpText: string }> = {
   gemini: {
@@ -21,7 +33,7 @@ const PROVIDER_COPY: Record<ProviderKey, { label: string; placeholder: string; h
     label: 'MiniMax',
     placeholder: 'sk-...',
     helpUrl: 'https://platform.minimax.io/',
-    helpText: 'Get your key from the MiniMax Developer Platform.'
+    helpText: 'Optional BYOK.'
   }
 };
 
@@ -108,16 +120,29 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
               <div className="space-y-4">
                 {(['gemini', 'minimax'] as ProviderKey[]).map((provider) => {
                   const providerStatus = status?.providers?.[provider];
+                  const proxyStatus = provider === 'minimax' ? status?.features?.minimaxProxy : null;
                   const copy = PROVIDER_COPY[provider];
+                  const isManagedProxy = provider === 'minimax' && proxyStatus?.enabled;
+                  const isLockedByEnv = providerStatus?.source === 'env';
+                  const canSaveInSettings = provider === 'gemini'
+                    ? !isLockedByEnv
+                    : Boolean(proxyStatus?.allowClientKey) && !isLockedByEnv;
+                  const isReady = provider === 'minimax'
+                    ? Boolean(proxyStatus?.enabled)
+                    : Boolean(providerStatus?.configured);
 
                   return (
                     <div key={provider} className="rounded-lg border border-zinc-800 bg-black/30 p-4 space-y-3">
                       <div className="flex items-center justify-between gap-3">
                         <span className="text-sm text-zinc-300">{copy.label} API Key</span>
-                        {providerStatus?.configured ? (
+                        {isReady ? (
                           <div className="flex items-center gap-1.5 text-emerald-400 text-xs bg-emerald-900/20 px-2 py-0.5 rounded border border-emerald-900/50">
                             <CheckCircle className="w-3 h-3" />
-                            Configured ({providerStatus.source === 'env' ? 'Environment' : 'Database'})
+                            {provider === 'minimax' && isManagedProxy
+                              ? proxyStatus?.localKeyConfigured
+                                ? `Proxy + Your Key (${proxyStatus.localKeySource === 'env' ? 'Environment' : 'Database'})`
+                                : 'Proxy Managed'
+                              : `Configured (${providerStatus?.source === 'env' ? 'Environment' : 'Database'})`}
                           </div>
                         ) : (
                           <div className="flex items-center gap-1.5 text-amber-400 text-xs bg-amber-900/20 px-2 py-0.5 rounded border border-amber-900/50">
@@ -126,15 +151,31 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                         )}
                       </div>
 
-                      {providerStatus?.source === 'env' ? (
+                      {provider === 'minimax' && proxyStatus?.enabled && (
+                        <p className="text-[10px] text-zinc-500">
+                          MiniMax always goes through the private ShellMind proxy.
+                          {proxyStatus.allowClientKey
+                            ? ' You can optionally attach your own MiniMax key from here.'
+                            : ' Client MiniMax keys are currently disabled by the proxy policy.'}
+                        </p>
+                      )}
+
+                      {isLockedByEnv ? (
                         <p className="text-[10px] text-zinc-500 italic flex items-center gap-1">
                           <Lock className="w-3 h-3" />
                           Managed via environment variables. Cannot be changed here.
                         </p>
+                      ) : !canSaveInSettings ? (
+                        <p className="text-[10px] text-zinc-500 italic flex items-center gap-1">
+                          <Lock className="w-3 h-3" />
+                          Saving {copy.label} keys from the app is disabled for this configuration.
+                        </p>
                       ) : (
                         <form onSubmit={(e) => handleSave(e, provider)} className="space-y-3">
                           <div>
-                            <label className="block text-[10px] uppercase text-zinc-500 font-bold mb-1">Set New API Key</label>
+                            <label className="block text-[10px] uppercase text-zinc-500 font-bold mb-1">
+                              {provider === 'minimax' ? 'Set Optional Client Key' : 'Set New API Key'}
+                            </label>
                             <input
                               type="password"
                               value={apiKeys[provider]}

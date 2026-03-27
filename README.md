@@ -9,6 +9,7 @@ It is designed for day-to-day server work across SSH, PowerShell, FTP, SFTP, and
 ## What is new in 0.2.0
 
 - MiniMax M2.7 support through the Anthropic-compatible API.
+- MiniMax M2.7 is included for free for the full duration of the alpha.
 - Gemini and MiniMax API keys can now be configured independently.
 - MiniMax M2.7 is now the default and recommended AI model.
 - AI model selection UI has been refined with cleaner recommendation styling.
@@ -50,7 +51,9 @@ It is designed for day-to-day server work across SSH, PowerShell, FTP, SFTP, and
 
 ### Requirements
 - Node.js
-- A Gemini or MiniMax API key
+- A Gemini API key if you want to use Gemini
+
+MiniMax M2.7 is included for free during the full alpha through the ShellMind private proxy. Adding your own MiniMax API key is optional.
 
 ### Install
 
@@ -66,11 +69,14 @@ Create a `.env` file in the project root:
 
 ```env
 GEMINI_API_KEY=your_api_key_here
-MINIMAX_API_KEY=your_minimax_key_here
-MINIMAX_ANTHROPIC_BASE_URL=https://api.minimax.io/anthropic/v1
+MINIMAX_API_KEY=your_optional_minimax_key_here
 ```
 
 You can also configure Gemini and MiniMax API keys from the app settings.
+
+MiniMax traffic now always goes through the ShellMind private proxy at `https://ia.shellmind.app`.
+
+- `MINIMAX_API_KEY`: optional user BYOK key. If it is configured, ShellMind forwards it to the proxy. If not, the proxy uses its own server-side MiniMax key.
 
 ### Run
 
