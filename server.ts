@@ -589,7 +589,7 @@ async function callMiniMaxCompatibleAnthropicApi(clientApiKey: string | null, mo
 
         const response = await sendMiniMaxProxyRequest(headers, {
             model: modelName,
-            max_tokens: 4096,
+            max_tokens: 6144,
             system: "You are a helpful assistant.",
             messages: [
                 {
