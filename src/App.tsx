@@ -266,7 +266,10 @@ function App() {
     }, [activeServer]);
 
     // Detect Electron
-    const isElectron = navigator.userAgent.toLowerCase().includes(' electron/');
+    const isElectron =
+        navigator.userAgent.toLowerCase().includes(' electron/') ||
+        window.location.protocol === 'file:';
+    const electronWindowControlsSpacer = isElectron ? '168px' : undefined;
 
     return (
         <div className={clsx(
@@ -290,8 +293,7 @@ function App() {
                 {/* Workspace Header */}
                 <header
                     className={clsx(
-                        "h-10 border-b border-zinc-800 flex items-center justify-between px-4 bg-zinc-900/30 shrink-0",
-                        isElectron && !isChatOpen && "pr-36" // Add padding only if Chat is closed
+                        "h-10 border-b border-zinc-800 flex items-center gap-4 px-4 bg-zinc-900/30 shrink-0"
                     )}
                     style={{ WebkitAppRegion: isElectron ? 'drag' : undefined } as any}
                 >
@@ -363,7 +365,6 @@ function App() {
                             </div>
                         )}
 
-                        {/* Chat Toggle Button */}
                         <button
                             onClick={() => {
                                 if (chatEnabled) {
@@ -372,7 +373,7 @@ function App() {
                             }}
                             disabled={!chatEnabled}
                             className={clsx(
-                                "p-1.5 rounded transition-colors",
+                                "p-1.5 rounded transition-colors shrink-0",
                                 chatEnabled
                                     ? (isChatOpen ? "text-teal-500 hover:bg-zinc-800" : "text-zinc-500 hover:bg-zinc-800")
                                     : "text-zinc-700 opacity-50 cursor-not-allowed"
@@ -386,6 +387,13 @@ function App() {
                             <MessageSquare className="w-4 h-4" />
                         </button>
                     </div>
+                    {isElectron && !isChatOpen && (
+                        <div
+                            aria-hidden="true"
+                            className="shrink-0 h-full"
+                            style={{ width: electronWindowControlsSpacer } as any}
+                        />
+                    )}
                 </header>
 
                 {/* Workspace Content */}
@@ -442,15 +450,17 @@ function App() {
                         isChatOpen ? "w-[380px]" : "w-0 border-l-0"
                     )}
                 >
-                    <div className="w-[380px] h-full absolute right-0 top-0 bottom-0">
-                        <Chat
-                            activeServer={activeServer}
-                            terminalHistory={terminalHistoryRef}
-                            terminalIssues={terminalIssues}
-                            onDismissTerminalIssue={dismissTerminalIssue}
-                            onClearTerminalIssues={clearTerminalIssues}
-                        />
-                    </div>
+                    {isChatOpen && (
+                        <div className="w-[380px] h-full absolute right-0 top-0 bottom-0">
+                            <Chat
+                                activeServer={activeServer}
+                                terminalHistory={terminalHistoryRef}
+                                terminalIssues={terminalIssues}
+                                onDismissTerminalIssue={dismissTerminalIssue}
+                                onClearTerminalIssues={clearTerminalIssues}
+                            />
+                        </div>
+                    )}
                 </aside>
             )}
 

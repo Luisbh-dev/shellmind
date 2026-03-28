@@ -433,53 +433,50 @@ export default function Chat({
         };
     }, [diagnosticPromptValue, latestIssue?.id, requestFixIt]);
 
-    const isElectron = navigator.userAgent.toLowerCase().includes(" electron/");
-
     return (
         <div className="flex flex-col h-full text-zinc-300 bg-zinc-900/30 relative">
             <div
-                className="h-10 px-4 border-b border-zinc-800 flex items-center justify-between bg-zinc-900/50 shrink-0"
-                style={{
-                    WebkitAppRegion: isElectron ? "drag" : undefined,
-                    paddingRight: isElectron ? "138px" : undefined
-                } as any}
+                className="h-10 px-4 border-b border-zinc-800 flex items-center bg-zinc-900/50 shrink-0"
+                style={{ WebkitAppRegion: "drag" } as any}
             >
-                <div className="flex items-center gap-2" style={{ WebkitAppRegion: "no-drag" } as any}>
+                <div className="flex min-w-0 flex-1 items-center gap-2">
                     <Sparkles className="w-3.5 h-3.5 text-teal-500" />
-                    {!isElectron && <span className="font-bold text-xs text-zinc-300 uppercase tracking-wider hidden sm:inline">AI Assistant</span>}
-
-                    <div className="ml-2 flex items-center gap-1.5">
-                        {isRecommendedModelSelected && (
-                            <div
-                                className="flex items-center justify-center rounded bg-amber-500/15 border border-amber-500/30 text-amber-300 px-1.5 py-1"
-                                title="Recommended model"
-                            >
-                                <Star className="w-3 h-3 fill-current" />
-                            </div>
-                        )}
-                        <select
-                            value={selectedModel}
-                            onChange={(e) => handleModelChange(e.target.value)}
-                            className={clsx(
-                                "text-[10px] border rounded px-1 py-0.5 outline-none bg-zinc-900 text-zinc-100",
-                                isRecommendedModelSelected
-                                    ? "border-amber-500/40 focus:border-amber-400"
-                                    : "border-zinc-700 focus:border-teal-500"
-                            )}
-                        >
-                            {MODEL_OPTIONS.map((option) => (
-                                <option
-                                    key={option.value}
-                                    value={option.value}
-                                    style={{ backgroundColor: "#18181b", color: "#f4f4f5" }}
-                                >
-                                    {option.label}
-                                </option>
-                            ))}
-                        </select>
-                    </div>
+                    <span className="font-bold text-xs text-zinc-300 uppercase tracking-wider">AI Assistant</span>
                 </div>
-                <div className="flex items-center gap-2" style={{ WebkitAppRegion: "no-drag" } as any}>
+            </div>
+
+            <div className="px-4 py-2 border-b border-zinc-800 bg-zinc-950/70 flex items-center justify-between gap-3 shrink-0" style={{ WebkitAppRegion: "no-drag" } as any}>
+                <div className="flex min-w-0 items-center gap-1.5">
+                    {isRecommendedModelSelected && (
+                        <div
+                            className="flex items-center justify-center rounded bg-amber-500/15 border border-amber-500/30 text-amber-300 px-1.5 py-1 shrink-0"
+                            title="Recommended model"
+                        >
+                            <Star className="w-3 h-3 fill-current" />
+                        </div>
+                    )}
+                    <select
+                        value={selectedModel}
+                        onChange={(e) => handleModelChange(e.target.value)}
+                        className={clsx(
+                            "min-w-0 max-w-[190px] text-[10px] border rounded px-1 py-0.5 outline-none bg-zinc-900 text-zinc-100",
+                            isRecommendedModelSelected
+                                ? "border-amber-500/40 focus:border-amber-400"
+                                : "border-zinc-700 focus:border-teal-500"
+                        )}
+                    >
+                        {MODEL_OPTIONS.map((option) => (
+                            <option
+                                key={option.value}
+                                value={option.value}
+                                style={{ backgroundColor: "#18181b", color: "#f4f4f5" }}
+                            >
+                                {option.label}
+                            </option>
+                        ))}
+                    </select>
+                </div>
+                <div className="flex shrink-0 items-center gap-2">
                     <button
                         onClick={toggleAutoRun}
                         className={clsx(

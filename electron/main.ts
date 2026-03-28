@@ -71,9 +71,13 @@ function startServer() {
     // Set the env var for the child process
     const env = { ...process.env, DB_PATH: dbPath, PORT: '3001' };
 
-    // Path to the compiled server file
-    // We will compile server_clean.ts to dist-server/server_clean.js
-    const serverPath = path.join(__dirname, '../dist-server/server_clean.js');
+    const preferredServerPath = path.join(__dirname, '../dist-server/server.js');
+    const legacyServerPath = path.join(__dirname, '../dist-server/server_clean.js');
+    const serverPath = fs.existsSync(preferredServerPath) ? preferredServerPath : legacyServerPath;
+
+    if (!fs.existsSync(serverPath)) {
+        throw new Error(`Bundled server entry not found. Checked: ${preferredServerPath} and ${legacyServerPath}`);
+    }
 
     console.log('Starting server from:', serverPath);
     
