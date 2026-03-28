@@ -6,6 +6,10 @@ ShellMind is a self-hosted remote workspace that combines terminal access, file 
 
 It is designed for day-to-day server work across SSH, PowerShell, FTP, SFTP, and S3-compatible storage while keeping the workflow fast, local, and practical.
 
+## Screenshot
+
+![ShellMind status dashboard and AI assistant](docs/screenshots/status-dashboard.png)
+
 ## What is new in 0.2.0
 
 - MiniMax M2.7 support through the Anthropic-compatible API.
