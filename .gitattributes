@@ -1,0 +1,14 @@
+# Normalize line endings: store text files with LF in the repo.
+* text=auto eol=lf
+
+# Keep Windows-specific scripts as CRLF.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Treat common binary assets as binary.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.svg text
