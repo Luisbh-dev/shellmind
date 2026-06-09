@@ -9,6 +9,8 @@ import SettingsModal from '@/components/SettingsModal';
 import StatusDashboard from '@/components/StatusDashboard';
 import { Terminal as TerminalIcon, Monitor, Activity, FileText, MessageSquare } from 'lucide-react';
 import { clsx } from 'clsx';
+import { API_BASE } from '@/config';
+import { StatusDot, statusLabel, type ConnState } from '@/components/ui';
 
 type TerminalIssueType = 'error' | 'warning';
 
@@ -44,6 +46,7 @@ function App() {
     const [servers, setServers] = useState<any[]>([]);
     const [editingServer, setEditingServer] = useState<any>(null);
     const [isChatOpen, setIsChatOpen] = useState(true);
+    const [connState, setConnState] = useState<ConnState>('connecting');
 
     // Terminal History Buffer (Ref to avoid re-renders)
     const terminalHistoryRef = useRef('');
@@ -196,7 +199,7 @@ function App() {
 
     const fetchServers = async () => {
         try {
-            const res = await fetch('http://localhost:3001/api/servers');
+            const res = await fetch(`${API_BASE}/api/servers`);
             const data = await res.json();
             if (data.message === 'success') {
                 setServers(data.data);
@@ -217,6 +220,7 @@ function App() {
         setTerminalIssues([]);
         recentTerminalIssueKeysRef.current.clear();
         lastTerminalIssueIdRef.current = null;
+        setConnState(server.type === 's3' ? 'connected' : 'connecting');
         setIsChatOpen(server.type !== 's3');
         setActiveTab((server.type === 'ftp' || server.type === 's3') ? 'sftp' : 'ssh');
     };
@@ -224,6 +228,13 @@ function App() {
     const handleEditServer = (server: any) => {
         setEditingServer(server);
         setIsAddServerOpen(true);
+    };
+
+    const handleServerDeleted = (id: number) => {
+        if (activeServer?.id === id) {
+            setActiveServer(null);
+        }
+        fetchServers();
     };
 
     const handleCloseModal = () => {
@@ -234,7 +245,7 @@ function App() {
     const handleOsDetected = (osName: string) => {
         setActiveServer((prev: any) => ({ ...prev, osDetail: osName }));
         if (activeServer?.id) {
-            fetch(`http://localhost:3001/api/servers/${activeServer.id}/os`, {
+            fetch(`${API_BASE}/api/servers/${activeServer.id}/os`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ os_detail: osName })
@@ -265,6 +276,17 @@ function App() {
         };
     }, [activeServer]);
 
+    // Real connection state reported by the active terminal session.
+    useEffect(() => {
+        const handleConnection = (e: Event) => {
+            const detail = (e as CustomEvent<{ serverId?: number; state?: ConnState }>).detail;
+            if (!detail || !activeServer || detail.serverId !== activeServer.id) return;
+            if (detail.state) setConnState(detail.state);
+        };
+        window.addEventListener('shellmind:connection', handleConnection as EventListener);
+        return () => window.removeEventListener('shellmind:connection', handleConnection as EventListener);
+    }, [activeServer?.id]);
+
     // Detect Electron
     const isElectron =
         navigator.userAgent.toLowerCase().includes(' electron/') ||
@@ -273,11 +295,11 @@ function App() {
 
     return (
         <div className={clsx(
-            "h-screen w-screen bg-black text-zinc-300 grid overflow-hidden font-sans transition-all duration-300 ease-in-out",
+            "h-screen w-screen bg-ink-900 text-zinc-300 grid overflow-hidden font-sans transition-all duration-300 ease-in-out",
             shouldShowChat ? "grid-cols-[260px_1fr_380px]" : "grid-cols-[260px_1fr_0px]"
         )}>
             {/* Column 1: Sidebar */}
-            <aside className="border-r border-zinc-800 bg-zinc-900/50 flex flex-col h-full overflow-hidden min-h-0">
+            <aside className="border-r border-white/5 bg-ink-850/60 flex flex-col h-full overflow-hidden min-h-0">
                 <Sidebar
                     servers={servers}
                     onSelectServer={handleSelectServer}
@@ -285,27 +307,38 @@ function App() {
                     onAddServer={() => setIsAddServerOpen(true)}
                     onEditServer={handleEditServer}
                     onOpenSettings={() => setIsSettingsOpen(true)}
+                    onServerDeleted={handleServerDeleted}
                 />
             </aside>
 
             {/* Column 2: Workspace (Terminal/RDP) */}
-            <main className="flex flex-col min-w-0 bg-black relative h-full overflow-hidden min-h-0">
+            <main className="flex flex-col min-w-0 bg-ink-900 relative h-full overflow-hidden min-h-0">
                 {/* Workspace Header */}
                 <header
                     className={clsx(
-                        "h-10 border-b border-zinc-800 flex items-center gap-4 px-4 bg-zinc-900/30 shrink-0"
+                        "h-10 border-b border-white/5 flex items-center gap-4 px-4 bg-ink-850/40 shrink-0"
                     )}
                     style={{ WebkitAppRegion: isElectron ? 'drag' : undefined } as any}
                 >
                     <div className="flex items-center gap-4 min-w-0 flex-1" style={{ WebkitAppRegion: 'no-drag' } as any}>
                         {activeServer ? (
-                            <div className="flex items-center gap-2 text-sm min-w-0 overflow-hidden">
-                                <span className={clsx("w-2 h-2 rounded-full shadow-sm shrink-0", "bg-emerald-500 shadow-emerald-500/50")}></span>
+                            <div className="flex items-center gap-2 text-sm min-w-0 overflow-hidden pl-2">
+                                <StatusDot state={connState} />
                                 <span className="font-medium text-zinc-100 truncate max-w-[150px] md:max-w-xs">{activeServer.name}</span>
-                                <span className="text-zinc-600 font-mono text-xs truncate shrink-0">({activeServer.ip})</span>
+                                <span className="text-zinc-500 font-mono text-xs truncate shrink-0">({activeServer.ip})</span>
+                                {activeServer.type !== 's3' && connState !== 'connected' && (
+                                    <span className={clsx(
+                                        "text-[11px] font-medium shrink-0",
+                                        connState === 'error' ? "text-rose-300"
+                                            : connState === 'connecting' ? "text-amber-300"
+                                            : "text-zinc-400"
+                                    )}>
+                                        · {statusLabel(connState)}
+                                    </span>
+                                )}
                             </div>
                         ) : (
-                            <span className="text-zinc-500 text-sm italic">No connection selected</span>
+                            <span className="text-zinc-400 text-sm italic">No connection selected</span>
                         )}
                     </div>
 
@@ -317,35 +350,37 @@ function App() {
                                     <button
                                         onClick={() => setActiveTab('ssh')}
                                         className={clsx(
-                                            "px-4 h-full text-xs font-medium flex items-center gap-2 transition-colors border-l border-zinc-800",
-                                            activeTab === 'ssh' ? "bg-zinc-800 text-zinc-100" : "text-zinc-500 hover:bg-zinc-900 hover:text-zinc-300"
+                                            "px-4 h-full text-xs font-medium flex items-center gap-2 transition-colors border-l border-white/5",
+                                            activeTab === 'ssh' ? "bg-white/[0.06] text-zinc-100" : "text-zinc-400 hover:bg-white/[0.03] hover:text-zinc-300"
                                         )}
                                     >
-                                        <TerminalIcon className="w-3.5 h-3.5" />
-                                        {activeServer.type === 'ftp' ? "Terminal" : (isWindows ? "CMD / PowerShell" : "SSH")}
+                                        <TerminalIcon className="w-4 h-4" />
+                                        {activeServer.type === 'ftp' || activeServer.type === 'local' ? "Terminal" : (isWindows ? "CMD / PowerShell" : "SSH")}
                                     </button>
                                 )}
 
-                                <button
-                                    onClick={() => setActiveTab('sftp')}
-                                    className={clsx(
-                                        "px-4 h-full text-xs font-medium flex items-center gap-2 transition-colors border-l border-r border-zinc-800",
-                                        activeTab === 'sftp' ? "bg-zinc-800 text-zinc-100" : "text-zinc-500 hover:bg-zinc-900 hover:text-zinc-300"
-                                    )}
-                                >
-                                    <FileText className="w-3.5 h-3.5" />
-                                    Files
-                                </button>
+                                {activeServer.type !== 'local' && (
+                                    <button
+                                        onClick={() => setActiveTab('sftp')}
+                                        className={clsx(
+                                            "px-4 h-full text-xs font-medium flex items-center gap-2 transition-colors border-l border-r border-white/5",
+                                            activeTab === 'sftp' ? "bg-white/[0.06] text-zinc-100" : "text-zinc-400 hover:bg-white/[0.03] hover:text-zinc-300"
+                                        )}
+                                    >
+                                        <FileText className="w-4 h-4" />
+                                        Files
+                                    </button>
+                                )}
 
-                                {activeServer.type !== 'ftp' && activeServer.type !== 's3' && (
+                                {activeServer.type !== 'ftp' && activeServer.type !== 's3' && activeServer.type !== 'local' && (
                                     <button
                                         onClick={() => setActiveTab('status')}
                                         className={clsx(
-                                            "px-4 h-full text-xs font-medium flex items-center gap-2 transition-colors border-l border-r border-zinc-800",
-                                            activeTab === 'status' ? "bg-zinc-800 text-zinc-100" : "text-zinc-500 hover:bg-zinc-900 hover:text-zinc-300"
+                                            "px-4 h-full text-xs font-medium flex items-center gap-2 transition-colors border-l border-r border-white/5",
+                                            activeTab === 'status' ? "bg-white/[0.06] text-zinc-100" : "text-zinc-400 hover:bg-white/[0.03] hover:text-zinc-300"
                                         )}
                                     >
-                                        <Activity className="w-3.5 h-3.5" />
+                                        <Activity className="w-4 h-4" />
                                         Status
                                     </button>
                                 )}
@@ -354,11 +389,11 @@ function App() {
                                     <button
                                         onClick={() => setActiveTab('rdp')}
                                         className={clsx(
-                                            "px-4 h-full text-xs font-medium flex items-center gap-2 transition-colors border-l border-r border-zinc-800",
-                                            activeTab === 'rdp' ? "bg-zinc-800 text-zinc-100" : "text-zinc-500 hover:bg-zinc-900 hover:text-zinc-300"
+                                            "px-4 h-full text-xs font-medium flex items-center gap-2 transition-colors border-l border-r border-white/5",
+                                            activeTab === 'rdp' ? "bg-white/[0.06] text-zinc-100" : "text-zinc-400 hover:bg-white/[0.03] hover:text-zinc-300"
                                         )}
                                     >
-                                        <Monitor className="w-3.5 h-3.5" />
+                                        <Monitor className="w-4 h-4" />
                                         RDP
                                     </button>
                                 )}
@@ -375,8 +410,8 @@ function App() {
                             className={clsx(
                                 "p-1.5 rounded transition-colors shrink-0",
                                 chatEnabled
-                                    ? (isChatOpen ? "text-teal-500 hover:bg-zinc-800" : "text-zinc-500 hover:bg-zinc-800")
-                                    : "text-zinc-700 opacity-50 cursor-not-allowed"
+                                    ? (isChatOpen ? "text-brand-400 hover:bg-white/5" : "text-zinc-400 hover:bg-white/5")
+                                    : "text-zinc-500 opacity-50 cursor-not-allowed"
                             )}
                             title={
                                 chatEnabled
@@ -397,7 +432,7 @@ function App() {
                 </header>
 
                 {/* Workspace Content */}
-                <div className="flex-1 relative bg-[#0a0a0a] min-h-0 overflow-hidden">
+                <div className="flex-1 relative bg-ink-900 min-h-0 overflow-hidden">
                     {activeServer ? (
                         <>
                             {activeServer.type !== 's3' && (
@@ -412,7 +447,7 @@ function App() {
                                 </div>
                             )}
 
-                            {activeServer.type !== 'ftp' && activeServer.type !== 's3' && (
+                            {activeServer.type !== 'ftp' && activeServer.type !== 's3' && activeServer.type !== 'local' && (
                                 <div className={clsx("absolute inset-0", activeTab === 'status' ? "block" : "hidden")}>
                                     <StatusDashboard
                                         server={activeServer}
@@ -422,20 +457,25 @@ function App() {
                             )}
 
                             {isWindows && (
-                                <div className={clsx("absolute inset-0 bg-[#0a0a0a]", activeTab === 'rdp' ? "block" : "hidden")}>
+                                <div className={clsx("absolute inset-0 bg-ink-900", activeTab === 'rdp' ? "block" : "hidden")}>
                                     <RdpComponent server={activeServer} />
                                 </div>
                             )}
 
-                            <div className={clsx("absolute inset-0 bg-[#0a0a0a]", activeTab === 'sftp' ? "block" : "hidden")}>
-                                <FileExplorer server={activeServer} isVisible={activeTab === 'sftp'} />
-                            </div>
+                            {activeServer.type !== 'local' && (
+                                <div className={clsx("absolute inset-0 bg-ink-900", activeTab === 'sftp' ? "block" : "hidden")}>
+                                    <FileExplorer server={activeServer} isVisible={activeTab === 'sftp'} />
+                                </div>
+                            )}
                         </>
                     ) : (
-                        <div className="absolute inset-0 flex items-center justify-center text-zinc-700">
+                        <div className="absolute inset-0 flex items-center justify-center">
                             <div className="text-center">
-                                <TerminalIcon className="w-16 h-16 mx-auto mb-4 opacity-10" />
-                                <p className="text-sm">Select a server to begin</p>
+                                <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-2xl border border-white/5 bg-white/[0.02] text-brand-400/60">
+                                    <TerminalIcon className="w-8 h-8" />
+                                </div>
+                                <p className="text-sm font-medium text-zinc-400">No connection selected</p>
+                                <p className="mt-1 text-xs text-zinc-500">Pick a server from the sidebar to get started</p>
                             </div>
                         </div>
                     )}
@@ -446,7 +486,7 @@ function App() {
             {chatEnabled && (
                 <aside
                     className={clsx(
-                        "border-l border-zinc-800 bg-zinc-900/30 flex flex-col h-full overflow-hidden min-h-0 transition-all duration-300 relative",
+                        "border-l border-white/5 bg-ink-850/30 flex flex-col h-full overflow-hidden min-h-0 transition-all duration-300 relative",
                         isChatOpen ? "w-[380px]" : "w-0 border-l-0"
                     )}
                 >
@@ -454,6 +494,7 @@ function App() {
                         <div className="w-[380px] h-full absolute right-0 top-0 bottom-0">
                             <Chat
                                 activeServer={activeServer}
+                                connectionState={connState}
                                 terminalHistory={terminalHistoryRef}
                                 terminalIssues={terminalIssues}
                                 onDismissTerminalIssue={dismissTerminalIssue}

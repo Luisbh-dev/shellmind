@@ -67,6 +67,12 @@ const db = new sqlite3.Database(dbPath, (err) => {
                 db.run(`ALTER TABLE servers ADD COLUMN privateKey TEXT`, () => { });
                 db.run(`ALTER TABLE servers ADD COLUMN passphrase TEXT`, () => { });
 
+                // Local / CLI connection columns
+                db.run(`ALTER TABLE servers ADD COLUMN command TEXT`, () => { });
+                db.run(`ALTER TABLE servers ADD COLUMN cwd TEXT`, () => { });
+                db.run(`ALTER TABLE servers ADD COLUMN initial_command TEXT`, () => { });
+                db.run(`ALTER TABLE servers ADD COLUMN cli_preset TEXT`, () => { });
+
                 // Create settings table
                 db.run(`CREATE TABLE IF NOT EXISTS settings (
                 key TEXT PRIMARY KEY,

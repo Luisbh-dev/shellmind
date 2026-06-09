@@ -1,4 +1,4 @@
-import { app, BrowserWindow, shell } from 'electron';
+import { app, BrowserWindow, shell, Menu } from 'electron';
 import path from 'path';
 import fs from 'fs';
 import { fork, ChildProcess } from 'child_process';
@@ -40,6 +40,33 @@ function createWindow() {
       shell.openExternal(url);
       return { action: 'deny' };
   });
+
+  // On macOS, an application menu with Edit roles is required for Cmd+C/V/X to
+  // work inside inputs. On Windows/Linux, Chromium handles clipboard shortcuts
+  // natively and a Copy accelerator would otherwise steal Ctrl+C (SIGINT) from
+  // the terminal — so we only install the menu on macOS.
+  if (process.platform === 'darwin') {
+      const menu = Menu.buildFromTemplate([
+          { role: 'appMenu' },
+          {
+              label: 'Edit',
+              submenu: [
+                  { role: 'undo' },
+                  { role: 'redo' },
+                  { type: 'separator' },
+                  { role: 'cut' },
+                  { role: 'copy' },
+                  { role: 'paste' },
+                  { role: 'selectAll' }
+              ]
+          },
+          { role: 'viewMenu' },
+          { role: 'windowMenu' }
+      ]);
+      Menu.setApplicationMenu(menu);
+  } else {
+      Menu.setApplicationMenu(null);
+  }
 
   if (isDev) {
     // In development, load from Vite dev server

@@ -3,16 +3,30 @@
 @tailwind utilities;
 
 :root {
-  --background: #121212;
+  --background: #08090c;
   --foreground: #ededed;
+}
+
+html,
+body,
+#root {
+  height: 100%;
 }
 
 body {
   margin: 0;
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   background: var(--background);
   color: var(--foreground);
   overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Selection */
+::selection {
+  background: rgba(45, 212, 203, 0.28);
+  color: #ffffff;
 }
 
 /* Custom Scrollbar */
@@ -22,20 +36,84 @@ body {
 }
 
 ::-webkit-scrollbar-track {
-  background: #0a0a0a; 
-  border-left: 1px solid #18181b;
+  background: transparent;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #27272a; 
-  border: 2px solid #0a0a0a;
-  border-radius: 0px; /* Square for industrial look */
+  background: #2a2f3a;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+  border-radius: 9999px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #3f3f46; 
+  background: #3a4150;
+  background-clip: padding-box;
 }
 
 .scrollbar-hide::-webkit-scrollbar {
-    display: none;
+  display: none;
+}
+
+/* Thin variant for dense panels */
+.scrollbar-thin::-webkit-scrollbar {
+  width: 7px;
+  height: 7px;
+}
+
+/* Skeleton shimmer helper */
+.shimmer {
+  position: relative;
+  overflow: hidden;
+}
+
+.shimmer::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.05),
+    transparent
+  );
+  animation: shimmer 1.6s infinite;
+}
+
+@keyframes shimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+/* Focus ring consistency for keyboard users */
+.focus-ring:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(45, 212, 203, 0.5);
+}
+
+/* Markdown tweaks inside chat bubbles */
+.prose-chat {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+.prose-chat :where(p):not(:where([class~="not-prose"] *)) {
+  margin: 0.35rem 0;
+}
+.prose-chat :where(ul, ol):not(:where([class~="not-prose"] *)) {
+  margin: 0.4rem 0;
+  padding-left: 1.1rem;
+}
+.prose-chat :where(code):not(:where([class~="not-prose"] *)) {
+  background: rgba(255, 255, 255, 0.06);
+  padding: 0.1rem 0.3rem;
+  border-radius: 4px;
+  font-size: 0.8em;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+.prose-chat :where(pre):not(:where([class~="not-prose"] *)) {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }

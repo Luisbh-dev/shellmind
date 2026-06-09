@@ -1,7 +1,13 @@
 import { useState, useEffect, useRef } from 'react';
-import { Folder, File, ArrowUp, Download, Upload, RefreshCw, Trash2, FolderPlus, Pencil } from 'lucide-react';
-import { clsx } from 'clsx';
+import {
+    Folder, File as FileIcon, ArrowUp, Download, Upload, RefreshCw, Trash2, FolderPlus,
+    Pencil, ChevronRight, HardDrive, Home, Loader2, FileArchive, FileText, FileCode,
+    FileImage, X
+} from 'lucide-react';
+import { cn } from '@/lib/cn';
 import io, { Socket } from 'socket.io-client';
+import { Modal, Button, Input, Field, useToast, useConfirm } from '@/components/ui';
+import { SOCKET_URL } from '@/config';
 
 interface FileItem {
     name: string;
@@ -16,6 +22,17 @@ interface FileExplorerProps {
     isVisible: boolean;
 }
 
+type UploadJob = { name: string; status: 'pending' | 'uploading' | 'done' | 'error' };
+
+const fileIconFor = (name: string) => {
+    const ext = name.split('.').pop()?.toLowerCase() || '';
+    if (['zip', 'tar', 'gz', 'rar', '7z', 'bz2', 'xz'].includes(ext)) return <FileArchive className="w-4 h-4 text-amber-400/80" />;
+    if (['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp', 'ico', 'bmp'].includes(ext)) return <FileImage className="w-4 h-4 text-fuchsia-400/80" />;
+    if (['js', 'ts', 'tsx', 'jsx', 'py', 'sh', 'go', 'rs', 'c', 'cpp', 'java', 'rb', 'php', 'json', 'yml', 'yaml', 'html', 'css'].includes(ext)) return <FileCode className="w-4 h-4 text-brand-400/80" />;
+    if (['txt', 'md', 'log', 'conf', 'cfg', 'ini', 'env'].includes(ext)) return <FileText className="w-4 h-4 text-zinc-400" />;
+    return <FileIcon className="w-4 h-4 text-zinc-400" />;
+};
+
 export default function FileExplorer({ server, isVisible }: FileExplorerProps) {
     const [files, setFiles] = useState<FileItem[]>([]);
     const [currentPath, setCurrentPath] = useState((server.type === 'windows' || server.type === 'ftp' || server.type === 's3') ? '/' : '/root');
@@ -26,18 +43,32 @@ export default function FileExplorer({ server, isVisible }: FileExplorerProps) {
     const [createFolderName, setCreateFolderName] = useState('');
     const [renameTarget, setRenameTarget] = useState<FileItem | null>(null);
     const [renameValue, setRenameValue] = useState('');
-    const [deleteTarget, setDeleteTarget] = useState<FileItem | null>(null);
+    const [editingPath, setEditingPath] = useState(false);
+    const [pathDraft, setPathDraft] = useState(currentPath);
+    const [isDragging, setIsDragging] = useState(false);
+    const [uploads, setUploads] = useState<UploadJob[]>([]);
     const operationTimeoutRef = useRef<number | null>(null);
+    const dragCounter = useRef(0);
+    const isUploadingRef = useRef(false);
 
+    const toast = useToast();
+    const confirm = useConfirm();
     const currentPathRef = useRef(currentPath);
+
+    const keyOf = (item: FileItem) => `${item.isDir ? 'dir' : 'file'}:${item.name}`;
 
     const normalizeFiles = (items: FileItem[]) => {
         const seen = new Set<string>();
-        return items.filter((item) => {
-            const key = `${item.isDir ? 'dir' : 'file'}:${item.name}`;
+        const unique = items.filter((item) => {
+            const key = keyOf(item);
             if (seen.has(key)) return false;
             seen.add(key);
             return true;
+        });
+        // Folders first, then alphabetical.
+        return unique.sort((a, b) => {
+            if (a.isDir !== b.isDir) return a.isDir ? -1 : 1;
+            return a.name.localeCompare(b.name, undefined, { numeric: true });
         });
     };
 
@@ -63,29 +94,22 @@ export default function FileExplorer({ server, isVisible }: FileExplorerProps) {
         setRenameValue('');
     };
 
-    const closeDeleteModal = () => {
-        setDeleteTarget(null);
-    };
-
     useEffect(() => {
         currentPathRef.current = currentPath;
+        setPathDraft(currentPath);
     }, [currentPath]);
 
     useEffect(() => {
         setFiles([]);
         closeCreateFolderModal();
         closeRenameModal();
-        closeDeleteModal();
         clearOperationTimeout();
-        // Default to /root for Linux SSH, but / for Windows and FTP
         const defaultPath = (server.type === 'windows' || server.type === 'ftp' || server.type === 's3') ? '/' : '/root';
         setCurrentPath(defaultPath);
     }, [server.id, server.type]);
 
-
-
     const formatSize = (bytes: number) => {
-        if (bytes === 0) return '0 B';
+        if (!bytes) return '—';
         const k = 1024;
         const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
         const i = Math.floor(Math.log(bytes) / Math.log(k));
@@ -101,7 +125,7 @@ export default function FileExplorer({ server, isVisible }: FileExplorerProps) {
         }
 
         setIsConnectionReady(false);
-        const newSocket = io('http://localhost:3001');
+        const newSocket = io(SOCKET_URL);
         setSocket(newSocket);
 
         newSocket.on('connect', () => {
@@ -127,7 +151,6 @@ export default function FileExplorer({ server, isVisible }: FileExplorerProps) {
         newSocket.on('ssh-output', () => { });
 
         newSocket.on('connection-ready', () => {
-            console.log("Connection ready received");
             setIsConnectionReady(true);
             newSocket.emit('sftp-list', currentPathRef.current);
             setIsLoading(true);
@@ -140,88 +163,62 @@ export default function FileExplorer({ server, isVisible }: FileExplorerProps) {
         });
 
         newSocket.on('sftp-error', (err: string) => {
-            console.error('SFTP Error:', err);
             clearOperationTimeout();
             setIsLoading(false);
-            alert('SFTP Error: ' + err);
+            toast.error('Transfer error', err);
         });
 
-        newSocket.on('sftp-write-success', (path: string) => {
-            clearOperationTimeout();
-            setIsLoading(false);
-            newSocket.emit('sftp-list', currentPathRef.current);
-        });
+        // Note: file writes are handled per-file inside uploadFiles() with a
+        // scoped socket.once(), which also drives the post-upload refresh. We do
+        // NOT register a global 'sftp-write-success' handler here — doing so
+        // would double-fire on every upload and collide with other operations.
 
         newSocket.on('sftp-mkdir-success', (createdPath: string) => {
             clearOperationTimeout();
             setIsLoading(false);
             closeCreateFolderModal();
-            const createdName = extractNameFromPath(createdPath || '');
-            if (createdName) {
-                setFiles((prev) => normalizeFiles([
-                    {
-                        name: createdName,
-                        isDir: true,
-                        size: 0,
-                        mtime: Math.floor(Date.now() / 1000),
-                        permissions: 0
-                    },
-                    ...prev
-                ]));
-            }
-            window.setTimeout(() => {
-                newSocket.emit('sftp-list', currentPathRef.current);
-            }, 150);
+            toast.success('Folder created', extractNameFromPath(createdPath || ''));
+            window.setTimeout(() => newSocket.emit('sftp-list', currentPathRef.current), 150);
         });
 
         newSocket.on('sftp-mkdir-error', (err: string) => {
             clearOperationTimeout();
             setIsLoading(false);
-            alert('SFTP Error: ' + err);
+            toast.error('Could not create folder', err);
         });
 
-        newSocket.on('sftp-rename-success', ({ oldName, newName, isDir }: { oldName: string, newName: string, isDir: boolean }) => {
+        newSocket.on('sftp-rename-success', () => {
             clearOperationTimeout();
             setIsLoading(false);
             closeRenameModal();
-            if (oldName && newName) {
-                setFiles((prev) => normalizeFiles(prev.map((item) => {
-                    if (item.name === oldName && item.isDir === isDir) {
-                        return { ...item, name: newName };
-                    }
-                    return item;
-                })));
-            }
-            window.setTimeout(() => {
-                newSocket.emit('sftp-list', currentPathRef.current);
-            }, 150);
+            toast.success('Renamed');
+            window.setTimeout(() => newSocket.emit('sftp-list', currentPathRef.current), 150);
         });
 
         newSocket.on('sftp-rename-error', (err: string) => {
             clearOperationTimeout();
             setIsLoading(false);
-            alert('SFTP Error: ' + err);
+            toast.error('Could not rename', err);
         });
 
-        newSocket.on('sftp-delete-success', (path: string) => {
+        newSocket.on('sftp-delete-success', () => {
             clearOperationTimeout();
             setIsLoading(false);
-            closeDeleteModal();
             newSocket.emit('sftp-list', currentPathRef.current);
         });
 
         newSocket.on('sftp-delete-error', (err: string) => {
             clearOperationTimeout();
             setIsLoading(false);
-            alert('SFTP Error: ' + err);
+            toast.error('Could not delete', err);
         });
 
         return () => {
             clearOperationTimeout();
             newSocket.disconnect();
         };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [server, isVisible]);
-
 
     useEffect(() => {
         if (isVisible && socket && isConnectionReady) {
@@ -242,123 +239,185 @@ export default function FileExplorer({ server, isVisible }: FileExplorerProps) {
         handleNavigate(parent);
     };
 
+    const joinPath = (name: string) => (currentPath.endsWith('/') ? `${currentPath}${name}` : `${currentPath}/${name}`);
+
     const handleDownload = (file: FileItem) => {
         if (!socket) return;
-        socket.emit('sftp-read', currentPath + '/' + file.name);
+        const requested = joinPath(file.name);
+        toast.info('Downloading', file.name);
 
-        socket.once('sftp-file-content', ({ path, data }) => {
+        const cleanup = () => {
+            window.clearTimeout(timer);
+            socket.off('sftp-file-content', onContent);
+            socket.off('sftp-error', onError);
+        };
+        const onContent = ({ path, data }: { path: string; data: string }) => {
+            // Ignore responses that belong to a different concurrent download.
+            if (path && path !== requested && extractNameFromPath(path) !== file.name) return;
+            cleanup();
             const link = document.createElement('a');
             link.href = `data:application/octet-stream;base64,${data}`;
             link.download = file.name;
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);
-        });
-    };
-
-    const handleUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
-        const file = event.target.files?.[0];
-        if (!file || !socket) return;
-
-        const reader = new FileReader();
-        reader.onload = () => {
-            const base64 = (reader.result as string).split(',')[1];
-            setIsLoading(true);
-            const separator = currentPath.endsWith('/') ? '' : '/';
-            const fullPath = `${currentPath}${separator}${file.name}`;
-
-            socket.emit('sftp-write', {
-                path: fullPath,
-                data: base64
-            });
         };
-        reader.readAsDataURL(file);
+        const onError = () => cleanup();
+        const timer = window.setTimeout(() => {
+            cleanup();
+            toast.error('Download timed out', file.name);
+        }, 60000);
+
+        socket.on('sftp-file-content', onContent);
+        socket.once('sftp-error', onError);
+        socket.emit('sftp-read', requested);
+    };
+
+    // ---- Upload (multi-file, sequential) -----------------------------------
+    const uploadFiles = async (fileList: File[]) => {
+        if (!socket || fileList.length === 0) return;
+        if (isUploadingRef.current) {
+            toast.info('Upload in progress', 'Wait for the current upload to finish.');
+            return;
+        }
+        isUploadingRef.current = true;
+
+        setUploads(fileList.map((f) => ({ name: f.name, status: 'pending' })));
+
+        for (let i = 0; i < fileList.length; i++) {
+            const file = fileList[i];
+            setUploads((prev) => prev.map((u, idx) => idx === i ? { ...u, status: 'uploading' } : u));
+
+            try {
+                await new Promise<void>((resolve, reject) => {
+                    const reader = new FileReader();
+                    reader.onerror = () => reject(new Error('read failed'));
+                    reader.onload = () => {
+                        const base64 = (reader.result as string).split(',')[1];
+                        const fullPath = joinPath(file.name);
+
+                        const onSuccess = () => { cleanup(); resolve(); };
+                        const onError = (err: string) => { cleanup(); reject(new Error(err)); };
+                        const timer = window.setTimeout(() => { cleanup(); reject(new Error('timeout')); }, 60000);
+                        const cleanup = () => {
+                            window.clearTimeout(timer);
+                            socket.off('sftp-write-success', onSuccess);
+                            socket.off('sftp-error', onError);
+                        };
+
+                        socket.once('sftp-write-success', onSuccess);
+                        socket.once('sftp-error', onError);
+                        socket.emit('sftp-write', { path: fullPath, data: base64 });
+                    };
+                    reader.readAsDataURL(file);
+                });
+                setUploads((prev) => prev.map((u, idx) => idx === i ? { ...u, status: 'done' } : u));
+            } catch (err: any) {
+                setUploads((prev) => prev.map((u, idx) => idx === i ? { ...u, status: 'error' } : u));
+                toast.error(`Upload failed: ${file.name}`, err?.message);
+            }
+        }
+
+        const failed = await new Promise<number>((r) => setUploads((prev) => { r(prev.filter((u) => u.status === 'error').length); return prev; }));
+        if (!failed) toast.success(`Uploaded ${fileList.length} file${fileList.length > 1 ? 's' : ''}`);
+        isUploadingRef.current = false;
+        socket.emit('sftp-list', currentPathRef.current);
+        window.setTimeout(() => setUploads([]), 1800);
+    };
+
+    const handleUploadInput = (event: React.ChangeEvent<HTMLInputElement>) => {
+        const list = Array.from(event.target.files || []);
         event.target.value = '';
+        void uploadFiles(list);
     };
 
-    const handleDelete = (file: FileItem) => {
-        if (!socket) return;
-        closeCreateFolderModal();
-        closeRenameModal();
-        setDeleteTarget(file);
+    // ---- Drag & drop -------------------------------------------------------
+    const onDragEnter = (e: React.DragEvent) => {
+        e.preventDefault();
+        if (e.dataTransfer.types.includes('Files')) {
+            dragCounter.current += 1;
+            setIsDragging(true);
+        }
+    };
+    const onDragOver = (e: React.DragEvent) => { e.preventDefault(); };
+    const onDragLeave = (e: React.DragEvent) => {
+        e.preventDefault();
+        dragCounter.current -= 1;
+        if (dragCounter.current <= 0) { setIsDragging(false); dragCounter.current = 0; }
+    };
+    const onDrop = (e: React.DragEvent) => {
+        e.preventDefault();
+        dragCounter.current = 0;
+        setIsDragging(false);
+        const dropped = Array.from(e.dataTransfer.files || []);
+        if (dropped.length) void uploadFiles(dropped);
     };
 
-    const submitDelete = () => {
-        if (!socket || !deleteTarget) return;
+    // ---- Delete (single + bulk via confirm) --------------------------------
+    const deleteOne = (file: FileItem) => new Promise<boolean>((resolve) => {
+        if (!socket) return resolve(false);
+        const onSuccess = () => { cleanup(); resolve(true); };
+        // The backend reports delete failures via the generic 'sftp-error' event.
+        const onError = () => { cleanup(); resolve(false); };
+        const timer = window.setTimeout(() => { cleanup(); resolve(false); }, 12000);
+        const cleanup = () => {
+            window.clearTimeout(timer);
+            socket.off('sftp-delete-success', onSuccess);
+            socket.off('sftp-error', onError);
+        };
+        socket.once('sftp-delete-success', onSuccess);
+        socket.once('sftp-error', onError);
+        socket.emit('sftp-delete', { path: joinPath(file.name), isDir: file.isDir });
+    });
 
-        setIsLoading(true);
-        clearOperationTimeout();
-        operationTimeoutRef.current = window.setTimeout(() => {
-            setIsLoading(false);
-            alert('Deleting took too long. Please try again.');
-        }, 8000);
-
-        const separator = currentPath.endsWith('/') ? '' : '/';
-        const fullPath = `${currentPath}${separator}${deleteTarget.name}`;
-
-        socket.emit('sftp-delete', {
-            path: fullPath,
-            isDir: deleteTarget.isDir
+    const handleDelete = async (file: FileItem) => {
+        const ok = await confirm({
+            title: `Delete ${file.isDir ? 'folder' : 'file'}`,
+            message: <>This will permanently delete <span className="text-zinc-200 font-medium">{file.name}</span>. This action cannot be undone.</>,
+            confirmLabel: 'Delete',
+            tone: 'danger'
         });
-    };
-
-    const openCreateFolderModal = () => {
-        closeRenameModal();
-        closeDeleteModal();
-        setCreateFolderName('');
-        setCreateFolderOpen(true);
+        if (!ok) return;
+        setIsLoading(true);
+        const deleted = await deleteOne(file);
+        if (deleted) toast.success('Deleted', file.name);
+        socket?.emit('sftp-list', currentPathRef.current);
     };
 
     const submitCreateFolder = () => {
         if (!socket) return;
-
         const trimmedName = createFolderName.trim();
         if (!trimmedName) return;
-        if (/[\\/]/.test(trimmedName)) {
-            alert('Folder names cannot contain slashes.');
-            return;
-        }
+        if (/[\\/]/.test(trimmedName)) { toast.error('Invalid name', 'Folder names cannot contain slashes.'); return; }
 
         setIsLoading(true);
         clearOperationTimeout();
         operationTimeoutRef.current = window.setTimeout(() => {
             setIsLoading(false);
-            alert('Creating the folder took too long. Please try again.');
+            toast.error('Timed out', 'Creating the folder took too long.');
         }, 8000);
 
-        socket.emit('sftp-mkdir', {
-            parentPath: currentPathRef.current,
-            name: trimmedName
-        });
+        socket.emit('sftp-mkdir', { parentPath: currentPathRef.current, name: trimmedName });
     };
 
     const openRenameModal = (file: FileItem) => {
         closeCreateFolderModal();
-        closeDeleteModal();
         setRenameTarget(file);
         setRenameValue(file.name);
     };
 
     const submitRename = () => {
         if (!socket || !renameTarget) return;
-
         const trimmedName = renameValue.trim();
         if (!trimmedName) return;
-        if (/[\\/]/.test(trimmedName)) {
-            alert('Names cannot contain slashes.');
-            return;
-        }
-
-        if (trimmedName === renameTarget.name) {
-            closeRenameModal();
-            return;
-        }
+        if (/[\\/]/.test(trimmedName)) { toast.error('Invalid name', 'Names cannot contain slashes.'); return; }
+        if (trimmedName === renameTarget.name) { closeRenameModal(); return; }
 
         setIsLoading(true);
         clearOperationTimeout();
         operationTimeoutRef.current = window.setTimeout(() => {
             setIsLoading(false);
-            alert('Renaming took too long. Please try again.');
+            toast.error('Timed out', 'Renaming took too long.');
         }, 8000);
 
         socket.emit('sftp-rename', {
@@ -369,234 +428,256 @@ export default function FileExplorer({ server, isVisible }: FileExplorerProps) {
         });
     };
 
+    // ---- Breadcrumbs -------------------------------------------------------
+    const segments = currentPath.split('/').filter(Boolean);
+    const rootLabel = server.type === 's3' ? server.s3_bucket || 's3' : server.type === 'ftp' ? 'ftp' : '/';
+    const buildPath = (index: number) => '/' + segments.slice(0, index + 1).join('/');
+
+    const protocol = server.type === 's3' ? 's3' : server.type === 'ftp' ? 'ftp' : 'sftp';
+
     return (
-        <div className="relative h-full flex flex-col bg-[#0a0a0a] text-zinc-300 font-sans">
-            <div className="h-10 border-b border-zinc-800 flex items-center px-4 gap-2 bg-zinc-900/30">
-                <button onClick={handleUp} className="p-1.5 hover:bg-zinc-800 rounded text-zinc-400" title="Go Up">
+        <div
+            className="relative h-full flex flex-col bg-[#0a0b0e] text-zinc-300"
+            onDragEnter={onDragEnter}
+            onDragOver={onDragOver}
+            onDragLeave={onDragLeave}
+            onDrop={onDrop}
+        >
+            {/* Header / breadcrumbs */}
+            <div className="flex h-11 shrink-0 items-center gap-2 border-b border-white/5 bg-ink-850/60 px-3">
+                <button onClick={handleUp} className="rounded-lg p-1.5 text-zinc-400 hover:bg-white/5 hover:text-zinc-100 transition" title="Go up">
                     <ArrowUp className="w-4 h-4" />
                 </button>
 
-                <div className="flex-1 flex items-center bg-black border border-zinc-800 rounded px-2 py-1 text-xs text-zinc-400 font-mono">
-                    <span className="mr-2 text-zinc-600">
-                        {server.type === 's3' ? 's3' : (server.type === 'ftp' ? 'ftp' : 'sftp')}://{server.ip || server.name}
+                <div className="flex min-w-0 flex-1 items-center gap-1 rounded-lg border border-white/5 bg-ink-900/60 px-2.5 py-1.5">
+                    <span className="flex items-center gap-1.5 text-zinc-400 shrink-0">
+                        <HardDrive className="w-4 h-4" />
+                        <span className="text-xs font-mono hidden sm:inline">{protocol}://{server.ip || server.name}</span>
                     </span>
-                    <input
-                        className="bg-transparent w-full outline-none text-zinc-200"
-                        value={currentPath}
-                        onChange={(e) => setCurrentPath(e.target.value)}
-                        onKeyDown={(e) => e.key === 'Enter' && handleNavigate(currentPath)}
-                    />
+                    {editingPath ? (
+                        <input
+                            autoFocus
+                            value={pathDraft}
+                            onChange={(e) => setPathDraft(e.target.value)}
+                            onBlur={() => setEditingPath(false)}
+                            onKeyDown={(e) => {
+                                if (e.key === 'Enter') { handleNavigate(pathDraft); setEditingPath(false); }
+                                if (e.key === 'Escape') { setPathDraft(currentPath); setEditingPath(false); }
+                            }}
+                            className="ml-1 flex-1 bg-transparent text-xs text-zinc-100 font-mono outline-none"
+                        />
+                    ) : (
+                        <div
+                            className="ml-1 flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto scrollbar-hide cursor-text"
+                            onDoubleClick={() => { setPathDraft(currentPath); setEditingPath(true); }}
+                            title="Double-click to edit path"
+                        >
+                            <button
+                                onClick={() => handleNavigate('/')}
+                                className="flex items-center gap-1 rounded px-1 py-0.5 text-xs text-zinc-400 hover:bg-white/5 hover:text-zinc-100 shrink-0"
+                            >
+                                <Home className="w-3.5 h-3.5" />
+                            </button>
+                            {segments.map((seg, i) => (
+                                <span key={i} className="flex items-center shrink-0">
+                                    <ChevronRight className="w-3.5 h-3.5 text-zinc-500" />
+                                    <button
+                                        onClick={() => handleNavigate(buildPath(i))}
+                                        className={cn(
+                                            "rounded px-1 py-0.5 text-xs hover:bg-white/5 hover:text-zinc-100 whitespace-nowrap",
+                                            i === segments.length - 1 ? "text-zinc-100 font-medium" : "text-zinc-400"
+                                        )}
+                                    >
+                                        {seg}
+                                    </button>
+                                </span>
+                            ))}
+                        </div>
+                    )}
                 </div>
 
-                <label className="p-1.5 hover:bg-zinc-800 rounded text-zinc-400 cursor-pointer" title="Upload File">
+                <label className="rounded-lg p-1.5 text-zinc-400 hover:bg-white/5 hover:text-zinc-100 transition cursor-pointer" title="Upload files">
                     <Upload className="w-4 h-4" />
-                    <input type="file" className="hidden" onChange={handleUpload} />
+                    <input type="file" multiple className="hidden" onChange={handleUploadInput} />
                 </label>
-
                 <button
-                    onClick={openCreateFolderModal}
-                    className="p-1.5 hover:bg-zinc-800 rounded text-zinc-400 disabled:opacity-40 disabled:cursor-not-allowed"
-                    title="Create Folder"
-                    disabled={!socket || isLoading}
+                    onClick={() => { closeRenameModal(); setCreateFolderName(''); setCreateFolderOpen(true); }}
+                    className="rounded-lg p-1.5 text-zinc-400 hover:bg-white/5 hover:text-zinc-100 transition disabled:opacity-40"
+                    title="New folder"
+                    disabled={!socket}
                 >
                     <FolderPlus className="w-4 h-4" />
                 </button>
-
                 <button
                     onClick={() => handleNavigate(currentPath)}
-                    className={clsx("p-1.5 hover:bg-zinc-800 rounded text-zinc-400", isLoading && "animate-spin")}
+                    className="rounded-lg p-1.5 text-zinc-400 hover:bg-white/5 hover:text-zinc-100 transition"
                     title="Refresh"
                 >
-                    <RefreshCw className="w-4 h-4" />
+                    <RefreshCw className={cn("w-4 h-4", isLoading && "animate-spin")} />
                 </button>
             </div>
 
-            <div className="flex-1 overflow-auto">
-                <table className="w-full text-left text-xs">
-                    <thead className="bg-zinc-900/50 text-zinc-500 font-medium border-b border-zinc-800 sticky top-0">
+            {/* File list */}
+            <div className="flex-1 overflow-auto scrollbar-thin">
+                <table className="w-full text-left text-[13px]">
+                    <thead className="bg-ink-850/80 text-zinc-400 border-b border-white/5 sticky top-0 z-10 backdrop-blur">
                         <tr>
-                            <th className="px-4 py-2 w-8"></th>
-                            <th className="px-4 py-2">Name</th>
-                            <th className="px-4 py-2 w-24 text-right">Size</th>
-                            <th className="px-4 py-2 w-32 text-right">Modified</th>
-                            <th className="px-4 py-2 w-24 text-right">Perms</th>
-                            <th className="px-4 py-2 w-16 text-center">Actions</th>
+                            <th className="px-3 py-2 w-9"></th>
+                            <th className="px-3 py-2 font-medium">Name</th>
+                            <th className="px-3 py-2 w-24 text-right font-medium">Size</th>
+                            <th className="px-3 py-2 w-28 text-right font-medium hidden md:table-cell">Modified</th>
+                            <th className="px-3 py-2 w-16 text-right font-medium hidden lg:table-cell">Perms</th>
+                            <th className="px-3 py-2 w-20 text-center font-medium">Actions</th>
                         </tr>
                     </thead>
-                    <tbody className="divide-y divide-zinc-800/50">
-                        {files.map((file, index) => (
-                            <tr
-                                key={`${file.isDir ? 'dir' : 'file'}:${file.name}:${index}`}
-                                className="hover:bg-zinc-800/30 cursor-pointer group transition-colors"
-                                onDoubleClick={() => file.isDir ? handleNavigate(currentPath === '/' ? `/${file.name}` : `${currentPath}/${file.name}`) : handleDownload(file)}
-                            >
-                                <td className="px-4 py-2 text-center">
-                                    {file.isDir ? <Folder className="w-4 h-4 text-blue-400 fill-current" /> : <File className="w-4 h-4 text-zinc-500" />}
-                                </td>
-                                <td className="px-4 py-2 font-medium text-zinc-300 group-hover:text-white">
-                                    {file.name}
-                                </td>
-                                <td className="px-4 py-2 text-right text-zinc-500 font-mono">
-                                    {!file.isDir && formatSize(file.size)}
-                                </td>
-                                <td className="px-4 py-2 text-right text-zinc-500">
-                                    {new Date(file.mtime * 1000).toLocaleDateString()}
-                                </td>
-                                <td className="px-4 py-2 text-right text-zinc-600 font-mono">
-                                    {file.permissions.toString(8).slice(-3)}
-                                </td>
-                                <td className="px-4 py-2 text-center flex items-center justify-end gap-1">
-                                    {!file.isDir && (
-                                        <button
-                                            onClick={(e) => { e.stopPropagation(); handleDownload(file); }}
-                                            className="p-1 hover:bg-zinc-700 rounded text-zinc-500 hover:text-zinc-300"
-                                            title="Download"
-                                        >
-                                            <Download className="w-3 h-3" />
-                                        </button>
-                                    )}
-                                    <button
-                                        onClick={(e) => { e.stopPropagation(); openRenameModal(file); }}
-                                        className="p-1 hover:bg-zinc-700 rounded text-zinc-500 hover:text-zinc-300"
-                                        title="Rename"
-                                    >
-                                        <Pencil className="w-3 h-3" />
-                                    </button>
-                                    <button
-                                        onClick={(e) => { e.stopPropagation(); handleDelete(file); }}
-                                        className="p-1 hover:bg-red-900/30 rounded text-zinc-500 hover:text-red-400"
-                                        title="Delete"
-                                    >
-                                        <Trash2 className="w-3 h-3" />
-                                    </button>
+                    <tbody>
+                        {isLoading && files.length === 0 ? (
+                            Array.from({ length: 8 }).map((_, i) => (
+                                <tr key={i} className="border-b border-white/[0.03]">
+                                    <td className="px-3 py-2.5"><div className="h-4 w-4 rounded bg-white/5 shimmer" /></td>
+                                    <td className="px-3 py-2.5"><div className="h-3.5 w-40 rounded bg-white/5 shimmer" /></td>
+                                    <td className="px-3 py-2.5"><div className="h-3.5 w-12 rounded bg-white/5 shimmer ml-auto" /></td>
+                                    <td className="px-3 py-2.5 hidden md:table-cell"><div className="h-3.5 w-16 rounded bg-white/5 shimmer ml-auto" /></td>
+                                    <td className="px-3 py-2.5 hidden lg:table-cell"></td>
+                                    <td className="px-3 py-2.5"></td>
+                                </tr>
+                            ))
+                        ) : files.length === 0 ? (
+                            <tr>
+                                <td colSpan={6}>
+                                    <div className="flex flex-col items-center justify-center gap-3 py-20 text-zinc-500">
+                                        <Folder className="w-12 h-12 opacity-20" />
+                                        <p className="text-sm">This folder is empty</p>
+                                        <p className="text-xs text-zinc-400">Drag &amp; drop files here to upload</p>
+                                    </div>
                                 </td>
                             </tr>
-                        ))}
+                        ) : (
+                            files.map((file) => {
+                                return (
+                                    <tr
+                                        key={keyOf(file)}
+                                        className="group cursor-pointer border-b border-white/[0.03] transition-colors hover:bg-white/[0.03]"
+                                        onDoubleClick={() => file.isDir ? handleNavigate(joinPath(file.name)) : handleDownload(file)}
+                                    >
+                                        <td className="px-3 py-2.5 text-center">
+                                            {file.isDir ? <Folder className="w-4 h-4 text-brand-400 fill-brand-500/20 inline" /> : <span className="inline-flex">{fileIconFor(file.name)}</span>}
+                                        </td>
+                                        <td className="px-3 py-2.5 font-medium text-zinc-200 group-hover:text-white truncate max-w-0">
+                                            {file.name}
+                                        </td>
+                                        <td className="px-3 py-2.5 text-right text-zinc-400 font-mono">
+                                            {!file.isDir && formatSize(file.size)}
+                                        </td>
+                                        <td className="px-3 py-2.5 text-right text-zinc-400 hidden md:table-cell">
+                                            {file.mtime ? new Date(file.mtime * 1000).toLocaleDateString() : '—'}
+                                        </td>
+                                        <td className="px-3 py-2.5 text-right text-zinc-500 font-mono hidden lg:table-cell">
+                                            {file.permissions ? file.permissions.toString(8).slice(-3) : '—'}
+                                        </td>
+                                        <td className="px-3 py-2.5">
+                                            <div className="flex items-center justify-end gap-1">
+                                                {!file.isDir && (
+                                                    <button onClick={(e) => { e.stopPropagation(); handleDownload(file); }} className="rounded-md border border-white/5 bg-white/[0.04] p-1.5 text-zinc-300 hover:bg-white/10 hover:text-brand-300 hover:border-brand-500/30 transition-colors" title="Download">
+                                                        <Download className="w-4 h-4" />
+                                                    </button>
+                                                )}
+                                                <button onClick={(e) => { e.stopPropagation(); openRenameModal(file); }} className="rounded-md border border-white/5 bg-white/[0.04] p-1.5 text-zinc-300 hover:bg-white/10 hover:text-brand-300 hover:border-brand-500/30 transition-colors" title="Rename">
+                                                    <Pencil className="w-4 h-4" />
+                                                </button>
+                                                <button onClick={(e) => { e.stopPropagation(); void handleDelete(file); }} className="rounded-md border border-white/5 bg-white/[0.04] p-1.5 text-zinc-300 hover:bg-rose-500/15 hover:text-rose-400 hover:border-rose-500/30 transition-colors" title="Delete">
+                                                    <Trash2 className="w-4 h-4" />
+                                                </button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                );
+                            })
+                        )}
                     </tbody>
                 </table>
             </div>
 
-            {createFolderOpen && (
-                <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/65 backdrop-blur-[1px] px-4">
-                    <form
-                        onSubmit={(e) => {
-                            e.preventDefault();
-                            submitCreateFolder();
-                        }}
-                        className="w-full max-w-sm rounded-2xl border border-zinc-700 bg-zinc-950 shadow-2xl shadow-black/40"
-                    >
-                        <div className="px-4 py-3 border-b border-zinc-800">
-                            <div className="text-sm font-semibold text-zinc-100">Create folder</div>
-                            <div className="text-xs text-zinc-500 mt-1">
-                                Folder will be created inside {currentPathRef.current}
+            {/* Upload progress dock */}
+            {uploads.length > 0 && (
+                <div className="absolute bottom-4 right-4 z-30 w-64 overflow-hidden rounded-xl border border-white/10 bg-ink-700/95 shadow-panel backdrop-blur animate-slide-up">
+                    <div className="flex items-center justify-between border-b border-white/5 px-3 py-2 text-xs text-zinc-400">
+                        <span>Uploading {uploads.filter(u => u.status === 'done').length}/{uploads.length}</span>
+                    </div>
+                    <div className="max-h-40 overflow-y-auto scrollbar-thin p-2 space-y-1">
+                        {uploads.map((u, i) => (
+                            <div key={i} className="flex items-center gap-2 text-xs">
+                                {u.status === 'uploading' && <Loader2 className="w-3.5 h-3.5 animate-spin text-brand-400 shrink-0" />}
+                                {u.status === 'done' && <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />}
+                                {u.status === 'error' && <X className="w-3.5 h-3.5 text-rose-400 shrink-0" />}
+                                {u.status === 'pending' && <span className="w-1.5 h-1.5 rounded-full bg-zinc-600 shrink-0" />}
+                                <span className="truncate text-zinc-300">{u.name}</span>
                             </div>
-                        </div>
-                        <div className="p-4 space-y-4">
-                            <input
-                                autoFocus
-                                value={createFolderName}
-                                onChange={(e) => setCreateFolderName(e.target.value)}
-                                placeholder="Folder name"
-                                className="w-full rounded-lg border border-zinc-700 bg-black px-3 py-2 text-sm text-zinc-100 outline-none focus:border-blue-500"
-                            />
-                            <div className="flex justify-end gap-2">
-                                <button
-                                    type="button"
-                                    onClick={closeCreateFolderModal}
-                                    className="px-3 py-2 rounded-lg border border-zinc-700 text-sm text-zinc-300 hover:bg-zinc-800"
-                                >
-                                    Cancel
-                                </button>
-                                <button
-                                    type="submit"
-                                    disabled={!createFolderName.trim()}
-                                    className="px-3 py-2 rounded-lg bg-blue-600 text-sm text-white disabled:opacity-40 disabled:cursor-not-allowed hover:bg-blue-500"
-                                >
-                                    Create
-                                </button>
-                            </div>
-                        </div>
-                    </form>
-                </div>
-            )}
-
-            {renameTarget && (
-                <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/65 backdrop-blur-[1px] px-4">
-                    <form
-                        onSubmit={(e) => {
-                            e.preventDefault();
-                            submitRename();
-                        }}
-                        className="w-full max-w-sm rounded-2xl border border-zinc-700 bg-zinc-950 shadow-2xl shadow-black/40"
-                    >
-                        <div className="px-4 py-3 border-b border-zinc-800">
-                            <div className="text-sm font-semibold text-zinc-100">Rename {renameTarget.isDir ? 'folder' : 'file'}</div>
-                            <div className="text-xs text-zinc-500 mt-1">
-                                Current name: {renameTarget.name}
-                            </div>
-                        </div>
-                        <div className="p-4 space-y-4">
-                            <input
-                                autoFocus
-                                value={renameValue}
-                                onChange={(e) => setRenameValue(e.target.value)}
-                                placeholder="New name"
-                                className="w-full rounded-lg border border-zinc-700 bg-black px-3 py-2 text-sm text-zinc-100 outline-none focus:border-blue-500"
-                            />
-                            <div className="flex justify-end gap-2">
-                                <button
-                                    type="button"
-                                    onClick={closeRenameModal}
-                                    className="px-3 py-2 rounded-lg border border-zinc-700 text-sm text-zinc-300 hover:bg-zinc-800"
-                                >
-                                    Cancel
-                                </button>
-                                <button
-                                    type="submit"
-                                    disabled={!renameValue.trim()}
-                                    className="px-3 py-2 rounded-lg bg-blue-600 text-sm text-white disabled:opacity-40 disabled:cursor-not-allowed hover:bg-blue-500"
-                                >
-                                    Rename
-                                </button>
-                            </div>
-                        </div>
-                    </form>
-                </div>
-            )}
-
-            {deleteTarget && (
-                <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/65 backdrop-blur-[1px] px-4">
-                    <div className="w-full max-w-sm rounded-2xl border border-zinc-700 bg-zinc-950 shadow-2xl shadow-black/40">
-                        <div className="px-4 py-3 border-b border-zinc-800">
-                            <div className="text-sm font-semibold text-zinc-100">Delete {deleteTarget.isDir ? 'folder' : 'file'}</div>
-                            <div className="text-xs text-zinc-500 mt-1">
-                                {deleteTarget.name}
-                            </div>
-                        </div>
-                        <div className="p-4 space-y-4">
-                            <div className="rounded-lg border border-red-500/20 bg-red-500/10 px-3 py-2 text-sm text-red-100">
-                                This action cannot be undone.
-                            </div>
-                            <div className="flex justify-end gap-2">
-                                <button
-                                    type="button"
-                                    onClick={closeDeleteModal}
-                                    className="px-3 py-2 rounded-lg border border-zinc-700 text-sm text-zinc-300 hover:bg-zinc-800"
-                                >
-                                    Cancel
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={submitDelete}
-                                    className="px-3 py-2 rounded-lg bg-red-500 text-sm text-white font-medium hover:bg-red-400"
-                                >
-                                    Delete
-                                </button>
-                            </div>
-                        </div>
+                        ))}
                     </div>
                 </div>
             )}
+
+            {/* Drag overlay */}
+            {isDragging && (
+                <div className="pointer-events-none absolute inset-0 z-40 flex items-center justify-center bg-brand-500/10 backdrop-blur-sm animate-fade-in">
+                    <div className="rounded-2xl border-2 border-dashed border-brand-400/60 bg-ink-800/80 px-10 py-8 text-center">
+                        <Upload className="mx-auto mb-2 h-8 w-8 text-brand-400" />
+                        <div className="text-sm font-semibold text-zinc-100">Drop to upload</div>
+                        <div className="text-xs text-zinc-400 mt-0.5">to {currentPath}</div>
+                    </div>
+                </div>
+            )}
+
+            {/* Create folder modal */}
+            <Modal
+                open={createFolderOpen}
+                onClose={closeCreateFolderModal}
+                title="Create folder"
+                description={`Inside ${currentPath}`}
+                icon={<FolderPlus className="w-4 h-4" />}
+                footer={
+                    <>
+                        <Button variant="ghost" size="sm" onClick={closeCreateFolderModal}>Cancel</Button>
+                        <Button variant="primary" size="sm" disabled={!createFolderName.trim()} onClick={submitCreateFolder}>Create</Button>
+                    </>
+                }
+            >
+                <Field label="Folder name">
+                    <Input
+                        autoFocus
+                        value={createFolderName}
+                        onChange={(e) => setCreateFolderName(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === 'Enter') submitCreateFolder(); }}
+                        placeholder="new-folder"
+                    />
+                </Field>
+            </Modal>
+
+            {/* Rename modal */}
+            <Modal
+                open={!!renameTarget}
+                onClose={closeRenameModal}
+                title={`Rename ${renameTarget?.isDir ? 'folder' : 'file'}`}
+                description={renameTarget ? `Current: ${renameTarget.name}` : undefined}
+                icon={<Pencil className="w-4 h-4" />}
+                footer={
+                    <>
+                        <Button variant="ghost" size="sm" onClick={closeRenameModal}>Cancel</Button>
+                        <Button variant="primary" size="sm" disabled={!renameValue.trim()} onClick={submitRename}>Rename</Button>
+                    </>
+                }
+            >
+                <Field label="New name">
+                    <Input
+                        autoFocus
+                        value={renameValue}
+                        onChange={(e) => setRenameValue(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === 'Enter') submitRename(); }}
+                        placeholder="New name"
+                    />
+                </Field>
+            </Modal>
         </div>
     );
 }

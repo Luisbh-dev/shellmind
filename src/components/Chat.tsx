@@ -1,9 +1,15 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Send, Bot, RotateCw, Sparkles, Play, Zap, Terminal, AlertTriangle, Star, X } from "lucide-react";
-import { clsx } from "clsx";
+import {
+    Send, Bot, Sparkles, Play, Zap, Terminal, AlertTriangle, Star, X, Square,
+    Copy, RefreshCw, Check, User
+} from "lucide-react";
+import { cn } from "@/lib/cn";
 import ReactMarkdown from "react-markdown";
+import { useToast } from "@/components/ui/Toast";
+import { type ConnState, Select } from "@/components/ui";
+import { API_BASE } from "@/config";
 
 interface Message {
     id: string;
@@ -21,11 +27,50 @@ interface TerminalIssue {
 
 interface ChatProps {
     activeServer: any;
+    connectionState?: ConnState;
     terminalHistory?: React.MutableRefObject<string>;
     terminalIssues?: TerminalIssue[];
     onDismissTerminalIssue?: (issueId: string) => void;
     onClearTerminalIssues?: () => void;
 }
+
+const greetingFor = (server: any, state?: ConnState) => {
+    if (!server) return "ShellMind AI ready. Select a server to begin.";
+    const name = `**${server.name}**`;
+    if (server.type === "s3") return `Browsing ${name}. AI chat is disabled for object storage.`;
+    switch (state) {
+        case "connected": return `Connected to ${name}. Ready to assist.`;
+        case "error": return `Couldn't connect to ${name}. I can still help — see the issue below or ask me anything.`;
+        case "disconnected": return `Session to ${name} ended. Reconnect from the terminal, or ask me anything.`;
+        default: return `Connecting to ${name}…`;
+    }
+};
+
+const CLI_PRESET_LABELS: Record<string, string> = {
+    azure: "Azure CLI (az)",
+    aws: "AWS CLI (aws)",
+    gcloud: "Google Cloud CLI (gcloud)",
+    kubectl: "kubectl",
+    docker: "Docker CLI",
+    shell: "the system shell",
+    custom: "a custom local command"
+};
+
+// Human/AI-readable description of the active connection, used as chat context.
+const describeServer = (server: any) => {
+    if (!server) return "No active server connection.";
+    if (server.type === "local") {
+        const preset = server.cli_preset || "shell";
+        const focus = CLI_PRESET_LABELS[preset] || "the local shell";
+        const scoped = !["shell", "custom"].includes(preset);
+        const detected = server.osDetail ? ` Detected environment: ${server.osDetail}.` : "";
+        if (scoped) {
+            return `This is a LOCAL, SCOPED ${focus} console on the user's own machine: it only runs that tool's subcommands (a "<tool>>" prompt), not a full shell. Provide ${focus} commands; including the leading tool name is fine (it's stripped automatically). Assume the tool is installed and authenticated locally.${detected} The terminal output below is from this console.`;
+        }
+        return `This is a LOCAL shell session named "${server.name}" on the user's own machine (PowerShell on Windows, bash/zsh on macOS/Linux). Provide shell-appropriate commands and assume local tools are installed.${detected} The terminal output below comes from this shell.`;
+    }
+    return `Connected to ${server.name} (${server.osDetail || server.type} - ${server.ip})`;
+};
 
 const MODEL_OPTIONS = [
     { value: "MiniMax-M2.7", label: "MiniMax M2.7" },
@@ -63,8 +108,41 @@ const extractCommandFromResponse = (text: string) => {
     return cleaned?.replace(/^[-*]\s*/, "").trim() || "";
 };
 
+function CodeBlock({ code, onRun }: { code: string; onRun: (code: string) => void }) {
+    const [copied, setCopied] = useState(false);
+    const copy = async () => {
+        try {
+            await navigator.clipboard.writeText(code.trim());
+            setCopied(true);
+            window.setTimeout(() => setCopied(false), 1400);
+        } catch { /* ignore */ }
+    };
+    return (
+        <div className="my-2 overflow-hidden rounded-lg border border-white/10 bg-ink-900">
+            <div className="flex items-center justify-between border-b border-white/5 bg-white/[0.03] px-2.5 py-1.5">
+                <span className="flex items-center gap-1.5 text-[11px] font-mono uppercase tracking-wider text-zinc-400">
+                    <Terminal className="h-3 w-3" /> shell
+                </span>
+                <div className="flex items-center gap-1">
+                    <button onClick={copy} className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] text-zinc-400 hover:bg-white/5 hover:text-zinc-200 transition">
+                        {copied ? <Check className="h-3 w-3 text-emerald-400" /> : <Copy className="h-3 w-3" />}
+                        {copied ? "Copied" : "Copy"}
+                    </button>
+                    <button onClick={() => onRun(code)} className="flex items-center gap-1 rounded bg-brand-500/15 px-1.5 py-0.5 text-[11px] font-medium text-brand-300 hover:bg-brand-500/25 transition">
+                        <Play className="h-3 w-3" /> Run
+                    </button>
+                </div>
+            </div>
+            <pre className="overflow-x-auto p-2.5 text-xs font-mono leading-relaxed text-zinc-200 whitespace-pre-wrap scrollbar-thin">
+                {code.trim()}
+            </pre>
+        </div>
+    );
+}
+
 export default function Chat({
     activeServer,
+    connectionState,
     terminalHistory,
     terminalIssues,
     onDismissTerminalIssue,
@@ -76,14 +154,29 @@ export default function Chat({
     const [input, setInput] = useState("");
     const [isLoading, setIsLoading] = useState(false);
     const [isAutoRun, setIsAutoRun] = useState(false);
-    const [selectedModel, setSelectedModel] = useState(MODEL_OPTIONS[0].value);
+    const [selectedModel, setSelectedModel] = useState<string>(MODEL_OPTIONS[0].value);
     const [fixItLoading, setFixItLoading] = useState(false);
     const [fixItSuggestion, setFixItSuggestion] = useState("");
     const [autoRunConfirmOpen, setAutoRunConfirmOpen] = useState(false);
+    const [copiedId, setCopiedId] = useState<string | null>(null);
 
     const messagesContainerRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLTextAreaElement>(null);
     const pendingFixItRequestRef = useRef(0);
+    const abortRef = useRef<AbortController | null>(null);
+    const autoRunTimerRef = useRef<number | null>(null);
+    const autoRunStepsRef = useRef(0);
+    const toast = useToast();
+
+    const AUTO_RUN_MAX_STEPS = 5;
+
+    // Clear any pending auto-run timer / abort in-flight request on unmount.
+    useEffect(() => {
+        return () => {
+            if (autoRunTimerRef.current) window.clearTimeout(autoRunTimerRef.current);
+            abortRef.current?.abort();
+        };
+    }, []);
 
     const latestIssue = terminalIssues?.[terminalIssues.length - 1] || null;
     const recentIssues = terminalIssues?.slice(-3).reverse() || [];
@@ -98,7 +191,7 @@ export default function Chat({
             : DIAGNOSTIC_PROMPT);
 
     useEffect(() => {
-        fetch("http://localhost:3001/api/config/model")
+        fetch(`${API_BASE}/api/config/model`)
             .then(res => res.json())
             .then(data => {
                 if (data.model) setSelectedModel(normalizeSelectableModel(data.model));
@@ -109,7 +202,7 @@ export default function Chat({
     const handleModelChange = async (newModel: string) => {
         setSelectedModel(newModel);
         try {
-            await fetch("http://localhost:3001/api/config/model", {
+            await fetch(`${API_BASE}/api/config/model`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ model: newModel })
@@ -136,30 +229,43 @@ export default function Chat({
         setAutoRunConfirmOpen(false);
     };
 
+    const initMessageId = "init-" + (activeServer?.id || "default");
+
     useEffect(() => {
         setMessages([
             {
-                id: "init-" + (activeServer?.id || "default"),
+                id: initMessageId,
                 role: "assistant",
-                content: activeServer
-                    ? `ShellMind connected to **${activeServer.name}**. Ready to assist.`
-                    : "ShellMind AI ready. Select a server to begin."
+                content: greetingFor(activeServer, connectionState)
             }
         ]);
         setFixItSuggestion("");
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [activeServer?.id]);
+
+    // Keep the greeting in sync with the real connection state (without
+    // touching any messages the user has already exchanged).
+    useEffect(() => {
+        setMessages(prev => prev.map(m =>
+            m.id === initMessageId ? { ...m, content: greetingFor(activeServer, connectionState) } : m
+        ));
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [connectionState]);
 
     useEffect(() => {
         if (activeServer?.osDetail) {
             setMessages(prev => {
                 if (prev.some(m => m.content.includes(activeServer.osDetail))) return prev;
 
+                const isLocal = activeServer.type === "local";
                 return [
                     ...prev,
                     {
                         id: "os-info-" + Date.now(),
                         role: "assistant",
-                        content: `OS detected: **${activeServer.osDetail}**.\nI will tailor my commands for this system.`
+                        content: isLocal
+                            ? `Environment: **${activeServer.osDetail}**.`
+                            : `OS detected: **${activeServer.osDetail}**.\nI will tailor my commands for this system.`
                     }
                 ];
             });
@@ -215,7 +321,9 @@ export default function Chat({
             if (i === 0) {
                 cleanCmd = line;
             } else {
-                cleanCmd += needsSeparator ? ` && ${line}` : ` ${line}`;
+                // Separate commands run on their own line (Enter); continuations
+                // (trailing \, &&, ||, ;) stay on the same logical line.
+                cleanCmd += needsSeparator ? `\n${line}` : ` ${line}`;
             }
 
             needsSeparator = !isContinuation;
@@ -224,37 +332,42 @@ export default function Chat({
         window.dispatchEvent(new CustomEvent("run-terminal-command", { detail: cleanCmd }));
     };
 
+    const copyMessage = async (msg: Message) => {
+        try {
+            await navigator.clipboard.writeText(msg.content);
+            setCopiedId(msg.id);
+            window.setTimeout(() => setCopiedId((id) => (id === msg.id ? null : id)), 1400);
+        } catch {
+            toast.error("Copy failed");
+        }
+    };
+
     const renderMessage = (content: string) => {
         const parts = content.split(/(```[\s\S]*?```)/g);
         return parts.map((part, i) => {
             if (part.startsWith("```")) {
                 const match = part.match(/```(\w*)\n?([\s\S]*?)```/);
                 const code = match ? match[2] : part.slice(3, -3);
-                return (
-                    <div key={i} className="my-2 bg-[#0f1115] rounded border border-zinc-800 overflow-hidden group">
-                        <div className="flex justify-between items-center px-2 py-1 bg-zinc-900 border-b border-zinc-800">
-                            <span className="text-[10px] text-zinc-500 font-mono">CODE</span>
-                            <button
-                                onClick={() => runCommand(code)}
-                                className="flex items-center gap-1 text-[10px] bg-blue-900/30 text-blue-400 px-1.5 py-0.5 rounded hover:bg-blue-900/50 transition-colors"
-                            >
-                                <Play className="w-3 h-3" />
-                                RUN
-                            </button>
-                        </div>
-                        <pre className="p-2 text-xs font-mono text-zinc-300 overflow-x-auto whitespace-pre-wrap">
-                            {code.trim()}
-                        </pre>
-                    </div>
-                );
+                return <CodeBlock key={i} code={code} onRun={runCommand} />;
             }
-
+            if (!part.trim()) return null;
             return (
-                <div key={i} className="prose prose-invert prose-xs max-w-none mb-2 leading-normal text-zinc-300">
+                <div key={i} className="prose-chat min-w-0 max-w-none break-words text-[13px] leading-relaxed text-zinc-300">
                     <ReactMarkdown>{part}</ReactMarkdown>
                 </div>
             );
         });
+    };
+
+    const stopGeneration = () => {
+        if (autoRunTimerRef.current) {
+            window.clearTimeout(autoRunTimerRef.current);
+            autoRunTimerRef.current = null;
+        }
+        abortRef.current?.abort();
+        abortRef.current = null;
+        setIsLoading(false);
+        setFixItLoading(false);
     };
 
     const handleSend = async () => {
@@ -266,11 +379,27 @@ export default function Chat({
             content: input,
         };
 
-        setMessages(prev => [...prev, userMessage]);
+        const next = [...messages, userMessage];
+        setMessages(next);
         setInput("");
         setIsLoading(true);
+        autoRunStepsRef.current = 0; // manual message resets the auto-run budget
 
-        await processAiInteraction([...messages, userMessage]);
+        await processAiInteraction(next);
+    };
+
+    const regenerate = () => {
+        if (isLoading) return;
+        let lastUserIdx = -1;
+        for (let i = messages.length - 1; i >= 0; i--) {
+            if (messages[i].role === "user") { lastUserIdx = i; break; }
+        }
+        if (lastUserIdx === -1) return;
+        const history = messages.slice(0, lastUserIdx + 1);
+        setMessages(history);
+        setIsLoading(true);
+        autoRunStepsRef.current = 0;
+        void processAiInteraction(history);
     };
 
     const requestFixIt = async () => {
@@ -281,6 +410,10 @@ export default function Chat({
         setFixItLoading(true);
         setFixItSuggestion("");
 
+        abortRef.current?.abort();
+        const controller = new AbortController();
+        abortRef.current = controller;
+
         try {
             const historyContext = terminalHistory?.current
                 ? `\n\n[LAST 50 LINES OF TERMINAL OUTPUT]\n${terminalHistory.current.slice(-3000)}`
@@ -290,13 +423,12 @@ export default function Chat({
                 ? `\n\n[RECENT SSH FAILURES]\n${terminalIssues.slice(-8).map(formatIssueEntry).join("\n")}`
                 : "";
 
-            const context = (activeServer
-                ? `Connected to ${activeServer.name} (${activeServer.osDetail || activeServer.type} - ${activeServer.ip})`
-                : "No active server connection.") + historyContext + issueContext;
+            const context = describeServer(activeServer) + historyContext + issueContext;
 
-            const res = await fetch("http://localhost:3001/api/chat", {
+            const res = await fetch(`${API_BASE}/api/chat`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
+                signal: controller.signal,
                 body: JSON.stringify({
                     message: "Return only the exact command that fixes this SSH error. If there are multiple commands, choose the safest single command first. No explanation, no bullets, only the command or a code block.",
                     context,
@@ -309,7 +441,8 @@ export default function Chat({
 
             if (pendingFixItRequestRef.current !== requestId) return;
             setFixItSuggestion(command || (data.response || "").trim());
-        } catch {
+        } catch (err: any) {
+            if (err?.name === "AbortError") return;
             if (pendingFixItRequestRef.current === requestId) {
                 setFixItSuggestion("");
             }
@@ -321,6 +454,9 @@ export default function Chat({
     };
 
     const processAiInteraction = async (conversationHistory: Message[], hiddenSystemContext?: string) => {
+        abortRef.current?.abort();
+        const controller = new AbortController();
+        abortRef.current = controller;
         try {
             const historyContext = terminalHistory?.current
                 ? `\n\n[LAST 50 LINES OF TERMINAL OUTPUT]\n${terminalHistory.current.slice(-3000)}`
@@ -330,15 +466,14 @@ export default function Chat({
                 ? `\n\n[RECENT SSH FAILURES]\n${terminalIssues.slice(-8).map(formatIssueEntry).join("\n")}`
                 : "";
 
-            const context = (activeServer
-                ? `Connected to ${activeServer.name} (${activeServer.osDetail || activeServer.type} - ${activeServer.ip})`
-                : "No active server connection.") + historyContext + terminalIssueContext + (hiddenSystemContext ? `\n\n[SYSTEM UPDATE]: ${hiddenSystemContext}` : "");
+            const context = describeServer(activeServer) + historyContext + terminalIssueContext + (hiddenSystemContext ? `\n\n[SYSTEM UPDATE]: ${hiddenSystemContext}` : "");
 
             const lastMsg = conversationHistory[conversationHistory.length - 1];
 
-            const res = await fetch("http://localhost:3001/api/chat", {
+            const res = await fetch(`${API_BASE}/api/chat`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
+                signal: controller.signal,
                 body: JSON.stringify({
                     message: lastMsg.content,
                     context: context,
@@ -372,15 +507,23 @@ export default function Chat({
             if (isAutoRun) {
                 const codeMatches = [...responseContent.matchAll(/```(\w*)\n?([\s\S]*?)```/g)];
 
-                if (codeMatches.length > 0) {
+                if (codeMatches.length > 0 && autoRunStepsRef.current >= AUTO_RUN_MAX_STEPS) {
+                    setMessages(prev => [...prev, {
+                        id: "autorun-cap-" + Date.now(),
+                        role: "assistant",
+                        content: `⏸ Auto-run paused after ${AUTO_RUN_MAX_STEPS} automated steps to avoid a loop. Send a message to continue, or run commands manually.`
+                    }]);
+                    setIsLoading(false);
+                } else if (codeMatches.length > 0) {
+                    autoRunStepsRef.current += 1;
                     const fullScript = codeMatches.map(match => match[2].trim()).join("\n");
 
                     const startLength = terminalHistory?.current?.length || 0;
                     runCommand(fullScript);
                     setIsLoading(true);
 
-                    setTimeout(() => {
-                        const currentLength = terminalHistory?.current?.length || 0;
+                    autoRunTimerRef.current = window.setTimeout(() => {
+                        autoRunTimerRef.current = null;
                         const newOutput = terminalHistory?.current?.substring(startLength) || "";
 
                         if (newOutput.trim().length > 0) {
@@ -402,7 +545,11 @@ export default function Chat({
                 setIsLoading(false);
             }
 
-        } catch (error) {
+        } catch (error: any) {
+            if (error?.name === "AbortError") {
+                setIsLoading(false);
+                return;
+            }
             console.error(error);
             setMessages(prev => [
                 ...prev,
@@ -431,113 +578,120 @@ export default function Chat({
         return () => {
             window.removeEventListener("terminal-issue-action", handleTerminalIssueAction as EventListener);
         };
-    }, [diagnosticPromptValue, latestIssue?.id, requestFixIt]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [diagnosticPromptValue, latestIssue?.id]);
+
+    const lastAssistantId = [...messages].reverse().find(m => m.role === "assistant")?.id;
 
     return (
-        <div className="flex flex-col h-full text-zinc-300 bg-zinc-900/30 relative">
+        <div className="flex flex-col h-full text-zinc-300 bg-ink-850/40 relative">
             <div
-                className="h-10 px-4 border-b border-zinc-800 flex items-center bg-zinc-900/50 shrink-0"
+                className="h-10 px-4 border-b border-white/5 flex items-center justify-between bg-ink-850/70 shrink-0"
                 style={{ WebkitAppRegion: "drag" } as any}
             >
-                <div className="flex min-w-0 flex-1 items-center gap-2">
-                    <Sparkles className="w-3.5 h-3.5 text-teal-500" />
-                    <span className="font-bold text-xs text-zinc-300 uppercase tracking-wider">AI Assistant</span>
+                <div className="flex min-w-0 items-center gap-2">
+                    <Sparkles className="w-3.5 h-3.5 text-brand-400" />
+                    <span className="font-bold text-xs text-zinc-200 uppercase tracking-wider">AI Assistant</span>
                 </div>
             </div>
 
-            <div className="px-4 py-2 border-b border-zinc-800 bg-zinc-950/70 flex items-center justify-between gap-3 shrink-0" style={{ WebkitAppRegion: "no-drag" } as any}>
+            <div className="px-3 py-2 border-b border-white/5 bg-ink-900/50 flex items-center justify-between gap-3 shrink-0" style={{ WebkitAppRegion: "no-drag" } as any}>
                 <div className="flex min-w-0 items-center gap-1.5">
                     {isRecommendedModelSelected && (
                         <div
-                            className="flex items-center justify-center rounded bg-amber-500/15 border border-amber-500/30 text-amber-300 px-1.5 py-1 shrink-0"
+                            className="flex items-center justify-center rounded-md bg-amber-500/15 border border-amber-500/30 text-amber-300 px-1.5 py-1 shrink-0"
                             title="Recommended model"
                         >
                             <Star className="w-3 h-3 fill-current" />
                         </div>
                     )}
-                    <select
+                    <Select
                         value={selectedModel}
-                        onChange={(e) => handleModelChange(e.target.value)}
-                        className={clsx(
-                            "min-w-0 max-w-[190px] text-[10px] border rounded px-1 py-0.5 outline-none bg-zinc-900 text-zinc-100",
-                            isRecommendedModelSelected
-                                ? "border-amber-500/40 focus:border-amber-400"
-                                : "border-zinc-700 focus:border-teal-500"
+                        onChange={handleModelChange}
+                        options={MODEL_OPTIONS.map((option) => ({ value: option.value, label: option.label }))}
+                        className={cn(
+                            "min-w-0 max-w-[210px] py-1.5 text-[11px]",
+                            isRecommendedModelSelected && "border-amber-500/40"
                         )}
-                    >
-                        {MODEL_OPTIONS.map((option) => (
-                            <option
-                                key={option.value}
-                                value={option.value}
-                                style={{ backgroundColor: "#18181b", color: "#f4f4f5" }}
-                            >
-                                {option.label}
-                            </option>
-                        ))}
-                    </select>
+                    />
                 </div>
-                <div className="flex shrink-0 items-center gap-2">
-                    <button
-                        onClick={toggleAutoRun}
-                        className={clsx(
-                            "p-1.5 rounded transition-colors flex items-center gap-1 text-[10px] font-bold border",
-                            isAutoRun
-                                ? "bg-amber-500/20 text-amber-400 border-amber-500/50"
-                                : "text-zinc-500 border-transparent hover:bg-zinc-800"
-                        )}
-                        title="Auto-Run Commands"
-                    >
-                        <Zap className="w-3 h-3 fill-current" />
-                        {isAutoRun && "AUTO"}
-                    </button>
-                </div>
+                <button
+                    onClick={toggleAutoRun}
+                    className={cn(
+                        "px-2 py-1.5 rounded-lg transition-colors flex items-center gap-1 text-[11px] font-bold border",
+                        isAutoRun
+                            ? "bg-amber-500/20 text-amber-300 border-amber-500/50"
+                            : "text-zinc-400 border-white/5 hover:bg-white/5 hover:text-zinc-300"
+                    )}
+                    title="Auto-Run Commands"
+                >
+                    <Zap className="w-3 h-3 fill-current" />
+                    {isAutoRun ? "AUTO ON" : "AUTO"}
+                </button>
             </div>
 
             <div
-                className="flex-1 min-h-0 overflow-y-auto p-4 space-y-6"
+                className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden scrollbar-thin p-4 space-y-5"
                 ref={messagesContainerRef}
                 style={{ WebkitAppRegion: "no-drag" } as any}
             >
                 {messages.map((msg) => (
                     <div
                         key={msg.id}
-                        className={clsx(
-                            "flex flex-col gap-1 max-w-[95%]",
+                        className={cn(
+                            "group flex flex-col gap-1.5 max-w-[92%]",
                             msg.role === "user" ? "ml-auto items-end" : "items-start"
                         )}
                     >
-                        <div className="flex items-center gap-2 mb-1">
-                            {msg.role === "assistant" && <Bot className="w-3 h-3 text-teal-500" />}
-                            <span className="text-[10px] text-zinc-500 font-medium uppercase">
+                        <div className="flex items-center gap-1.5 px-1">
+                            {msg.role === "assistant"
+                                ? <Bot className="w-3 h-3 text-brand-400" />
+                                : <User className="w-3 h-3 text-zinc-400" />}
+                            <span className="text-[11px] text-zinc-400 font-medium uppercase tracking-wide">
                                 {msg.role === "user" ? "You" : "ShellMind"}
                             </span>
                         </div>
 
-                        <div className={clsx(
-                            "px-3 py-2 text-sm leading-relaxed rounded-md w-full",
+                        <div className={cn(
+                            "px-3.5 py-2.5 text-sm leading-relaxed rounded-xl w-full",
                             msg.role === "user"
-                                ? "bg-zinc-800 text-zinc-100 border border-zinc-700"
-                                : "text-zinc-300"
+                                ? "bg-ink-650 text-zinc-100 border border-white/10 rounded-tr-sm"
+                                : "bg-ink-800/60 border border-white/5 rounded-tl-sm"
                         )}>
                             {renderMessage(msg.content)}
                         </div>
+
+                        {msg.role === "assistant" && msg.content.length > 24 && (
+                            <div className="flex items-center gap-1 px-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                <button onClick={() => copyMessage(msg)} className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] text-zinc-400 hover:bg-white/5 hover:text-zinc-300 transition">
+                                    {copiedId === msg.id ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                                    {copiedId === msg.id ? "Copied" : "Copy"}
+                                </button>
+                                {msg.id === lastAssistantId && !isLoading && (
+                                    <button onClick={regenerate} className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] text-zinc-400 hover:bg-white/5 hover:text-zinc-300 transition">
+                                        <RefreshCw className="w-3 h-3" /> Retry
+                                    </button>
+                                )}
+                            </div>
+                        )}
                     </div>
                 ))}
                 {isLoading && (
-                    <div className="flex flex-col gap-1">
-                        <div className="flex items-center gap-2 mb-1">
-                            <Bot className="w-3 h-3 text-teal-500" />
-                            <span className="text-[10px] text-zinc-500 font-medium uppercase">ShellMind</span>
+                    <div className="flex flex-col gap-1.5">
+                        <div className="flex items-center gap-1.5 px-1">
+                            <Bot className="w-3 h-3 text-brand-400" />
+                            <span className="text-[11px] text-zinc-400 font-medium uppercase tracking-wide">ShellMind</span>
                         </div>
-                        <div className="flex items-center gap-2 text-zinc-500 text-xs pl-1">
-                            <RotateCw className="w-3 h-3 animate-spin" />
-                            <span>Generating response...</span>
+                        <div className="flex items-center gap-1.5 rounded-xl bg-ink-800/60 border border-white/5 px-3.5 py-3">
+                            <span className="h-1.5 w-1.5 rounded-full bg-brand-400 animate-pulse" />
+                            <span className="h-1.5 w-1.5 rounded-full bg-brand-400 animate-pulse [animation-delay:160ms]" />
+                            <span className="h-1.5 w-1.5 rounded-full bg-brand-400 animate-pulse [animation-delay:320ms]" />
                         </div>
                     </div>
                 )}
             </div>
 
-            <div className="p-3 border-t border-zinc-800 bg-zinc-900/50 shrink-0" style={{ WebkitAppRegion: "no-drag" } as any}>
+            <div className="p-3 border-t border-white/5 bg-ink-850/70 shrink-0" style={{ WebkitAppRegion: "no-drag" } as any}>
                 <div className="relative">
                     <textarea
                         ref={inputRef}
@@ -549,68 +703,76 @@ export default function Chat({
                                 handleSend();
                             }
                         }}
-                        placeholder="Type a command or question..."
-                        className="w-full bg-black text-zinc-200 text-sm p-3 pr-10 rounded border border-zinc-800 focus:border-zinc-600 focus:ring-0 focus:outline-none resize-none scrollbar-hide min-h-[80px]"
+                        placeholder="Ask anything, or describe what you want to do..."
+                        className="w-full bg-ink-900 text-zinc-200 text-sm p-3 pr-11 rounded-xl border border-white/10 focus:border-brand-500/60 focus:outline-none resize-none scrollbar-hide min-h-[78px]"
                     />
-                    <button
-                        onClick={handleSend}
-                        disabled={!input.trim() || isLoading}
-                        className="absolute right-2 bottom-2 p-1.5 hover:bg-zinc-800 disabled:opacity-30 disabled:hover:bg-transparent text-zinc-400 hover:text-white rounded transition-colors"
-                    >
-                        <Send className="w-3.5 h-3.5" />
-                    </button>
+                    {isLoading ? (
+                        <button
+                            onClick={stopGeneration}
+                            className="absolute right-2 bottom-2 flex items-center justify-center rounded-lg bg-rose-600/90 p-2 text-white hover:bg-rose-500 transition"
+                            title="Stop generating"
+                        >
+                            <Square className="w-3.5 h-3.5 fill-current" />
+                        </button>
+                    ) : (
+                        <button
+                            onClick={handleSend}
+                            disabled={!input.trim()}
+                            className="absolute right-2 bottom-2 flex items-center justify-center rounded-lg bg-brand-500 p-2 text-ink-900 disabled:opacity-30 disabled:bg-white/5 disabled:text-zinc-400 hover:bg-brand-400 transition"
+                            title="Send (Enter)"
+                        >
+                            <Send className="w-3.5 h-3.5" />
+                        </button>
+                    )}
                 </div>
 
                 {latestIssue && (
-                    <div className="mt-3 rounded border border-zinc-800 bg-black/40 px-3 py-2">
+                    <div className="mt-3 rounded-xl border border-white/10 bg-ink-900/60 px-3 py-2.5">
                         <div className="flex items-start justify-between gap-3">
                             <div className="min-w-0">
-                                <div className="flex items-center gap-2 text-[10px] uppercase tracking-wider text-zinc-600 mb-1">
-                                    <AlertTriangle className={clsx("w-3 h-3", latestIssue.type === "error" ? "text-red-400" : "text-amber-400")} />
+                                <div className="flex items-center gap-2 text-[11px] uppercase tracking-wider text-zinc-400 mb-1">
+                                    <AlertTriangle className={cn("w-3 h-3", latestIssue.type === "error" ? "text-rose-400" : "text-amber-400")} />
                                     Last SSH issue
                                 </div>
-                                <div className={clsx(
+                                <div className={cn(
                                     "text-xs font-medium break-words max-h-24 overflow-hidden",
-                                    latestIssue.type === "error" ? "text-red-300" : "text-amber-300"
+                                    latestIssue.type === "error" ? "text-rose-300" : "text-amber-300"
                                 )}>
                                     {latestIssue.message}
                                 </div>
                                 {latestIssue.details && (
-                                    <div className="text-[10px] text-zinc-500 mt-1 font-mono max-h-10 overflow-hidden break-words">
+                                    <div className="text-[11px] text-zinc-400 mt-1 font-mono max-h-10 overflow-hidden break-words">
                                         {latestIssue.details}
                                     </div>
                                 )}
                             </div>
-                            <div className="flex shrink-0 gap-2">
+                            <div className="flex shrink-0 gap-1.5">
                                 <button
                                     onClick={() => latestIssue && onDismissTerminalIssue?.(latestIssue.id)}
-                                    className="px-2 py-1 rounded border border-zinc-700 text-[10px] text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 transition-colors flex items-center gap-1"
-                                    title="Dismiss this SSH issue"
+                                    className="rounded-lg border border-white/10 p-1.5 text-zinc-400 hover:text-zinc-100 hover:bg-white/5 transition-colors"
+                                    title="Dismiss"
                                 >
                                     <X className="w-3 h-3" />
-                                    Close
                                 </button>
                                 <button
                                     onClick={() => setInput(diagnosticPromptValue)}
-                                    className="px-2 py-1 rounded border border-zinc-700 text-[10px] text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 transition-colors flex items-center gap-1"
-                                    title="Ask AI to analyze this SSH error"
+                                    className="flex items-center gap-1 rounded-lg border border-white/10 px-2 py-1.5 text-[11px] text-zinc-400 hover:text-zinc-100 hover:bg-white/5 transition-colors"
+                                    title="Ask AI to analyze this error"
                                 >
-                                    <Terminal className="w-3 h-3" />
-                                    Analyze
+                                    <Terminal className="w-3 h-3" /> Analyze
                                 </button>
                                 <button
                                     onClick={requestFixIt}
                                     disabled={fixItLoading}
-                                    className={clsx(
-                                        "px-2 py-1 rounded border text-[10px] transition-colors flex items-center gap-1",
+                                    className={cn(
+                                        "flex items-center gap-1 rounded-lg border px-2 py-1.5 text-[11px] transition-colors",
                                         fixItLoading
                                             ? "bg-amber-600/70 text-white border-amber-500"
-                                            : "border-amber-700 text-amber-300 hover:bg-amber-500/15"
+                                            : "border-amber-700/60 text-amber-300 hover:bg-amber-500/15"
                                     )}
-                                    title="Ask AI for the exact fix command"
+                                    title="Ask AI for the exact fix"
                                 >
-                                    <Zap className="w-3 h-3" />
-                                    Fix it
+                                    <Zap className="w-3 h-3" /> Fix it
                                 </button>
                             </div>
                         </div>
@@ -620,33 +782,27 @@ export default function Chat({
                                 <div className="flex justify-end">
                                     <button
                                         onClick={() => onClearTerminalIssues?.()}
-                                        className="text-[10px] text-zinc-500 hover:text-zinc-200 transition-colors"
-                                        title="Clear all SSH issues"
+                                        className="text-[11px] text-zinc-400 hover:text-zinc-200 transition-colors"
                                     >
                                         Clear all
                                     </button>
                                 </div>
                                 {recentIssues.map(issue => (
-                                    <div
-                                        key={issue.id}
-                                        className="flex items-center gap-2 rounded border border-zinc-800/70 bg-black/30 px-2 py-1"
-                                    >
+                                    <div key={issue.id} className="flex items-center gap-2 rounded-lg border border-white/5 bg-black/30 px-2 py-1">
                                         <button
                                             onClick={() => setInput(`${DIAGNOSTIC_PROMPT}\n\nTerminal issue:\n${formatIssueEntry(issue)}\n\nActive server: ${activeServer ? `${activeServer.name} (${activeServer.osDetail || activeServer.type})` : "None"}`)}
                                             className="block min-w-0 flex-1 text-left hover:text-zinc-100 transition-colors"
-                                            title="Use this error in the AI prompt"
                                         >
-                                            <div className={clsx(
-                                                "text-[10px] font-medium truncate",
-                                                issue.type === "error" ? "text-red-300" : "text-amber-300"
+                                            <div className={cn(
+                                                "text-[11px] font-medium truncate",
+                                                issue.type === "error" ? "text-rose-300" : "text-amber-300"
                                             )}>
                                                 {issue.message}
                                             </div>
                                         </button>
                                         <button
                                             onClick={() => onDismissTerminalIssue?.(issue.id)}
-                                            className="shrink-0 rounded p-1 text-zinc-500 hover:bg-zinc-800 hover:text-zinc-200 transition-colors"
-                                            title="Dismiss this SSH issue"
+                                            className="shrink-0 rounded p-1 text-zinc-400 hover:bg-white/5 hover:text-zinc-200 transition-colors"
                                         >
                                             <X className="w-3 h-3" />
                                         </button>
@@ -656,7 +812,7 @@ export default function Chat({
                         )}
 
                         {fixItLoading && (
-                            <div className="mt-2 text-xs text-zinc-500 flex items-center gap-2">
+                            <div className="mt-2 text-xs text-zinc-400 flex items-center gap-2">
                                 <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
                                 Generating fix...
                             </div>
@@ -664,20 +820,20 @@ export default function Chat({
 
                         {fixItSuggestion && !fixItLoading && (
                             <div className="mt-2 space-y-2">
-                                <div className="rounded border border-zinc-800 bg-black/60 p-2">
-                                    <div className="text-[10px] uppercase tracking-wider text-zinc-600 mb-1">Suggested command</div>
+                                <div className="rounded-lg border border-white/10 bg-black/60 p-2">
+                                    <div className="text-[11px] uppercase tracking-wider text-zinc-400 mb-1">Suggested command</div>
                                     <pre className="text-[11px] text-zinc-200 font-mono whitespace-pre-wrap break-words">{fixItSuggestion}</pre>
                                 </div>
                                 <div className="flex gap-2">
                                     <button
-                                        onClick={() => navigator.clipboard.writeText(fixItSuggestion)}
-                                        className="flex-1 rounded border border-zinc-700 px-3 py-1.5 text-[10px] text-zinc-300 hover:bg-zinc-800"
+                                        onClick={() => { navigator.clipboard.writeText(fixItSuggestion); toast.success("Copied"); }}
+                                        className="flex-1 rounded-lg border border-white/10 px-3 py-1.5 text-[11px] text-zinc-300 hover:bg-white/5"
                                     >
                                         Copy
                                     </button>
                                     <button
                                         onClick={() => runCommand(fixItSuggestion)}
-                                        className="flex-1 rounded border border-zinc-700 px-3 py-1.5 text-[10px] text-zinc-300 hover:bg-zinc-800"
+                                        className="flex-1 rounded-lg bg-brand-500/15 border border-brand-500/30 px-3 py-1.5 text-[11px] text-brand-300 hover:bg-brand-500/25"
                                     >
                                         Run
                                     </button>
@@ -687,18 +843,18 @@ export default function Chat({
                     </div>
                 )}
 
-            <div className="flex justify-between items-center mt-2 px-1">
-                    <span className="text-[10px] text-zinc-600">Context: {activeServer ? "Active" : "None"}</span>
-                    <span className="text-[10px] text-zinc-700">Enter to send, Shift+Enter for new line</span>
+                <div className="flex justify-between items-center mt-2 px-1">
+                    <span className="text-[11px] text-zinc-400">Context: {activeServer ? "Active" : "None"}</span>
+                    <span className="text-[11px] text-zinc-400">Enter to send · Shift+Enter newline</span>
                 </div>
             </div>
 
             {autoRunConfirmOpen && (
-                <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/65 backdrop-blur-[1px] px-4">
-                    <div className="w-full max-w-sm rounded-2xl border border-zinc-700 bg-zinc-950 shadow-2xl shadow-black/40">
-                        <div className="px-4 py-3 border-b border-zinc-800">
+                <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/65 backdrop-blur-sm px-4 animate-fade-in">
+                    <div className="w-full max-w-sm rounded-2xl border border-white/10 bg-ink-800 shadow-panel animate-scale-in">
+                        <div className="px-4 py-3 border-b border-white/5">
                             <div className="text-sm font-semibold text-zinc-100">Enable Auto-Run</div>
-                            <div className="text-xs text-zinc-500 mt-1">
+                            <div className="text-xs text-zinc-400 mt-1">
                                 AI suggestions will be executed automatically when they contain commands.
                             </div>
                         </div>
@@ -710,7 +866,7 @@ export default function Chat({
                                 <button
                                     type="button"
                                     onClick={cancelEnableAutoRun}
-                                    className="px-3 py-2 rounded-lg border border-zinc-700 text-sm text-zinc-300 hover:bg-zinc-800"
+                                    className="px-3 py-2 rounded-lg border border-white/10 text-sm text-zinc-300 hover:bg-white/5"
                                 >
                                     Cancel
                                 </button>

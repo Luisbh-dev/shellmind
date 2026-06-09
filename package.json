@@ -1,6 +1,6 @@
 {
   "name": "shellmind",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "ShellMind is a self-hosted remote workspace for terminal access, file management, remote desktop, and AI assistance.",
   "author": "Luisbh",
   "private": true,
@@ -71,6 +71,7 @@
     "electron-squirrel-startup": "^1.0.1",
     "express": "^5.1.0",
     "lucide-react": "^0.309.0",
+    "node-pty": "^1.1.0",
     "node-rdpjs-2": "^0.3.5",
     "react": "^18",
     "react-dom": "^18",

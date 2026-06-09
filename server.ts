@@ -123,6 +123,12 @@ function getSettingValue(key: string): Promise<string | null> {
     });
 }
 
+function setSettingValue(key: string, value: string): Promise<void> {
+    return new Promise((resolve) => {
+        db.run("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", [key, value], () => resolve());
+    });
+}
+
 function getDbRow<T>(sql: string, params: any[] = []): Promise<T | null> {
     return new Promise((resolve, reject) => {
         db.get(sql, params, (err, row: any) => {
@@ -359,11 +365,13 @@ function parseLinuxDisks(rawOutput: string): StatusDisk[] {
             const parts = line.split(/\s+/);
             if (parts.length < 6) return null;
 
+            // Columns from `df -P -k`: Filesystem 1024-blocks Used Available Capacity Mounted-on
             const [name, totalRaw, usedRaw, freeRaw, usageRaw, ...mountParts] = parts;
-            const totalGB = roundTo(parseInt(totalRaw.replace(/M$/i, ''), 10) / 1024, 1);
-            const usedGB = roundTo(parseInt(usedRaw.replace(/M$/i, ''), 10) / 1024, 1);
-            const freeGB = roundTo(parseInt(freeRaw.replace(/M$/i, ''), 10) / 1024, 1);
-            const usagePercent = roundTo(parseFloat(usageRaw.replace('%', '')), 1);
+            const KB_PER_GB = 1024 * 1024;
+            const totalGB = roundTo((parseInt(totalRaw, 10) || 0) / KB_PER_GB, 1);
+            const usedGB = roundTo((parseInt(usedRaw, 10) || 0) / KB_PER_GB, 1);
+            const freeGB = roundTo((parseInt(freeRaw, 10) || 0) / KB_PER_GB, 1);
+            const usagePercent = roundTo(parseFloat(usageRaw.replace('%', '')) || 0, 1);
 
             return {
                 name,
@@ -394,6 +402,23 @@ function parseLinuxProcesses(rawOutput: string): StatusProcess[] {
     }
 
     return processes;
+}
+
+// Fallback parser for busybox/Alpine `ps -o pid,rss,comm` (no %cpu column).
+// Sorted by resident memory since CPU% is unavailable in this mode.
+function parseBusyboxProcesses(rawOutput: string): StatusProcess[] {
+    const rows: StatusProcess[] = [];
+    for (const line of rawOutput.split(/\r?\n/).map(line => line.trim()).filter(Boolean)) {
+        const match = line.match(/^(\d+)\s+(\d+)\s+(.+)$/);
+        if (!match) continue;
+        rows.push({
+            pid: parseInt(match[1], 10),
+            name: match[3].trim(),
+            cpuPercent: 0,
+            memoryMB: roundTo((parseInt(match[2], 10) || 0) / 1024, 1)
+        });
+    }
+    return rows.sort((a, b) => (b.memoryMB || 0) - (a.memoryMB || 0)).slice(0, 5);
 }
 
 function aggregateStorage(disks: StatusDisk[]) {
@@ -443,6 +468,334 @@ function execSshCommand(conn: Client, command: string): Promise<string> {
     });
 }
 
+// Tolerant variant: never rejects. A single unsupported command (e.g. on
+// busybox/Alpine) returns "" so it degrades that one metric instead of failing
+// the whole status panel.
+async function execSshSafe(conn: Client, command: string): Promise<string> {
+    try {
+        return await execSshCommand(conn, command);
+    } catch {
+        return "";
+    }
+}
+
+// --- Local CLI / terminal -------------------------------------------------
+let nodePtyModule: any = null;
+let nodePtyTried = false;
+function loadNodePty(): any {
+    if (nodePtyTried) return nodePtyModule;
+    nodePtyTried = true;
+    try {
+        nodePtyModule = require("node-pty");
+    } catch (e: any) {
+        console.warn("node-pty unavailable, local terminals will use basic mode:", e?.message);
+        nodePtyModule = null;
+    }
+    return nodePtyModule;
+}
+
+function defaultLocalShell(): { file: string; args: string[] } {
+    if (process.platform === "win32") {
+        return { file: "powershell.exe", args: ["-NoLogo"] };
+    }
+    return { file: process.env.SHELL || "/bin/bash", args: ["-l"] };
+}
+
+interface LocalTermHandle {
+    write(data: string): void;
+    resize(cols: number, rows: number): void;
+    kill(): void;
+}
+
+function startLocalTerminal(
+    config: { command?: string; cwd?: string; initialCommand?: string; cols?: number; rows?: number },
+    handlers: { onData: (chunk: string) => void; onExit: () => void }
+): LocalTermHandle {
+    const cols = config.cols || 80;
+    const rows = config.rows || 24;
+    const cwd = config.cwd && config.cwd.trim()
+        ? config.cwd.trim()
+        : (process.env.HOME || process.env.USERPROFILE || process.cwd());
+    const env = { ...process.env };
+
+    let file: string;
+    let args: string[];
+    if (config.command && config.command.trim()) {
+        const parts = config.command.trim().split(/\s+/);
+        file = parts[0];
+        args = parts.slice(1);
+    } else {
+        const base = defaultLocalShell();
+        file = base.file;
+        args = base.args;
+    }
+
+    const sendInitial = (write: (text: string) => void, newline: string) => {
+        if (config.initialCommand && config.initialCommand.trim()) {
+            const cmd = config.initialCommand.trim();
+            setTimeout(() => { try { write(cmd + newline); } catch { /* ignore */ } }, 700);
+        }
+    };
+
+    const pty = loadNodePty();
+    if (pty) {
+        const term = pty.spawn(file, args, { name: "xterm-256color", cols, rows, cwd, env });
+        term.onData((chunk: string) => handlers.onData(chunk));
+        term.onExit(() => handlers.onExit());
+        sendInitial((text) => term.write(text), "\r");
+        return {
+            write: (data) => { try { term.write(data); } catch { /* ignore */ } },
+            resize: (c, r) => { try { term.resize(Math.max(1, c), Math.max(1, r)); } catch { /* ignore */ } },
+            kill: () => { try { term.kill(); } catch { /* ignore */ } }
+        };
+    }
+
+    // Fallback when node-pty is not available (degraded: no real TTY).
+    const { spawn } = require("child_process");
+    handlers.onData("\r\n[ShellMind] node-pty not available — basic mode (limited interactivity).\r\n");
+    const child = spawn(file, args, { cwd, env });
+    child.stdout?.on("data", (chunk: Buffer) => handlers.onData(chunk.toString()));
+    child.stderr?.on("data", (chunk: Buffer) => handlers.onData(chunk.toString()));
+    child.on("exit", () => handlers.onExit());
+    child.on("error", (err: any) => handlers.onData(`\r\n[ShellMind] Failed to start '${file}': ${err.message}\r\n`));
+    sendInitial((text) => child.stdin?.write(text), "\n");
+    return {
+        write: (data) => { try { child.stdin?.write(data); } catch { /* ignore */ } },
+        resize: () => { /* no-op without a PTY */ },
+        kill: () => { try { child.kill(); } catch { /* ignore */ } }
+    };
+}
+
+/**
+ * Scoped CLI console: shows a `<bin>>` prompt and runs each entered line as
+ * `<bin> <args>` without giving access to the underlying shell. `exit`/`quit`
+ * closes it. Each command is executed via child_process through the system
+ * shell (so PATH and .cmd/.bat wrappers like az/gcloud resolve), which keeps
+ * the output clean — unlike a per-command conpty, which would clear the screen.
+ */
+function startScopedCli(
+    config: {
+        bin: string;
+        cwd?: string;
+        banner?: string;
+        initialCommand?: string;
+        subcommands?: string[];
+        initialHistory?: string[];
+        onHistoryChange?: (history: string[]) => void;
+    },
+    handlers: { onData: (chunk: string) => void; onExit: () => void }
+): LocalTermHandle {
+    const cwd = config.cwd && config.cwd.trim()
+        ? config.cwd.trim()
+        : (process.env.HOME || process.env.USERPROFILE || process.cwd());
+    const env = { ...process.env };
+    const bin = config.bin;
+    const subcommands = config.subcommands || [];
+    const promptLabel = `\x1b[36m${bin}>\x1b[0m `;
+    const history: string[] = (config.initialHistory || []).slice(-100);
+    let histIdx = history.length;
+
+    let mode: "prompt" | "running" = "prompt";
+    let line = "";
+    let child: any = null;
+    let closed = false;
+
+    const writePrompt = () => { if (!closed) handlers.onData("\r\n" + promptLabel); };
+    // Redraw the current input line in place (used for history recall).
+    const redrawLine = () => { if (!closed) handlers.onData("\r\x1b[K" + promptLabel + line); };
+    const recall = (delta: number) => {
+        if (!history.length) return;
+        histIdx = Math.max(0, Math.min(history.length, histIdx + delta));
+        line = histIdx < history.length ? history[histIdx] : "";
+        redrawLine();
+    };
+
+    const commonPrefix = (arr: string[]) => {
+        if (!arr.length) return "";
+        let p = arr[0];
+        for (const s of arr) { while (!s.startsWith(p)) p = p.slice(0, -1); }
+        return p;
+    };
+    // Tab-complete the first token against the tool's common subcommands.
+    const complete = () => {
+        if (!subcommands.length || /\s/.test(line)) return;
+        const matches = subcommands.filter((s) => s.startsWith(line.toLowerCase()));
+        if (!matches.length) return;
+        if (matches.length === 1) {
+            line = matches[0] + " ";
+            redrawLine();
+        } else {
+            const common = commonPrefix(matches);
+            if (common.length > line.length) line = common;
+            handlers.onData("\r\n" + matches.join("   ") + "\r\n" + promptLabel + line);
+        }
+    };
+
+    const finishChild = () => {
+        child = null;
+        mode = "prompt";
+        line = "";
+        writePrompt();
+    };
+
+    const runLine = (raw: string) => {
+        const input = raw.trim();
+        if (!input) { writePrompt(); return; }
+        const lower = input.toLowerCase();
+        if (lower === "exit" || lower === "quit") { handlers.onData("\r\n"); handlers.onExit(); return; }
+        if (lower === "clear" || lower === "cls") { handlers.onData("\x1b[2J\x1b[H"); writePrompt(); return; }
+
+        // Ensure the command targets the scoped tool (so both "ps" and
+        // "docker ps" work), then run it THROUGH the shell so PATH and
+        // .cmd/.bat wrappers (az, gcloud) resolve correctly.
+        const firstTok = input.split(/\s+/)[0]?.toLowerCase();
+        const fullCmd = firstTok === bin.toLowerCase() ? input : `${bin} ${input}`;
+        const isWin = process.platform === "win32";
+        const shellFile = isWin ? (process.env.ComSpec || "cmd.exe") : "/bin/sh";
+        const shellArgs = isWin ? ["/d", "/s", "/c", fullCmd] : ["-c", fullCmd];
+        handlers.onData("\r\n");
+
+        try {
+            const { spawn } = require("child_process");
+            const cp = spawn(shellFile, shellArgs, { cwd, env, windowsHide: true });
+            child = cp; mode = "running";
+            // Normalize bare LF to CRLF so the terminal doesn't stair-step.
+            const emit = (d: Buffer) => handlers.onData(d.toString().replace(/\r?\n/g, "\r\n"));
+            cp.stdout?.on("data", emit);
+            cp.stderr?.on("data", emit);
+            cp.on("close", () => finishChild());
+            cp.on("error", (e: any) => { handlers.onData(`${bin}: ${e.message}\r\n`); finishChild(); });
+        } catch (e: any) {
+            handlers.onData(`${bin}: ${e?.message || e}\r\n`);
+            finishChild();
+        }
+    };
+
+    // Banner + first prompt (and optional auto-run of the context command).
+    setTimeout(() => {
+        if (closed) return;
+        if (config.banner) handlers.onData(config.banner);
+        if (config.initialCommand && config.initialCommand.trim()) {
+            runLine(config.initialCommand.trim());
+        } else {
+            writePrompt();
+        }
+    }, 60);
+
+    return {
+        write: (data) => {
+            if (closed) return;
+            if (mode === "running" && child) {
+                // Ctrl+C cancels the running command; everything else is stdin.
+                if (data.includes("\x03")) { try { child.kill(); } catch { /* ignore */ } }
+                else { try { child.stdin?.write(data); } catch { /* ignore */ } }
+                return;
+            }
+            // Prompt mode: line editor with echo, history (↑/↓) and Ctrl+L.
+            for (let i = 0; i < data.length; i++) {
+                const ch = data[i];
+                if (ch === "\x1b") {
+                    // Arrow keys: ESC [ A / ESC O A (up), B (down).
+                    const intro = data[i + 1];
+                    const code = data[i + 2];
+                    if ((intro === "[" || intro === "O") && (code === "A" || code === "B")) {
+                        recall(code === "A" ? -1 : 1);
+                        i += 2;
+                    } else {
+                        // Skip any other escape sequence up to its final byte.
+                        let j = i + 1;
+                        while (j < data.length && !/[A-Za-z~]/.test(data[j])) j++;
+                        i = j;
+                    }
+                    continue;
+                }
+                if (ch === "\r" || ch === "\n") {
+                    const current = line.trim();
+                    if (current && history[history.length - 1] !== current) {
+                        history.push(current);
+                        if (history.length > 100) history.shift();
+                        config.onHistoryChange?.(history.slice());
+                    }
+                    histIdx = history.length;
+                    const submitted = line; line = "";
+                    runLine(submitted);
+                } else if (ch === "\t") {
+                    complete();
+                } else if (ch === "\x7f" || ch === "\b") {
+                    if (line.length) { line = line.slice(0, -1); handlers.onData("\b \b"); }
+                } else if (ch === "\x03") {
+                    line = ""; handlers.onData("^C"); writePrompt();
+                } else if (ch === "\x0c") {
+                    // Ctrl+L: clear the screen but keep the current line.
+                    handlers.onData("\x1b[2J\x1b[H" + promptLabel + line);
+                } else if (ch >= " ") {
+                    line += ch; handlers.onData(ch);
+                }
+            }
+        },
+        resize: () => { /* pipe-based; nothing to resize */ },
+        kill: () => {
+            closed = true;
+            try { if (child) child.kill(); } catch { /* ignore */ }
+        }
+    };
+}
+
+// Common subcommands per tool, used for Tab-completion in the scoped console.
+const CLI_SUBCOMMANDS: Record<string, string[]> = {
+    docker: ["ps", "images", "pull", "push", "run", "exec", "logs", "build", "compose", "network", "volume", "inspect", "stop", "start", "restart", "rm", "rmi", "stats", "system", "login", "info", "version", "top", "cp", "tag", "save", "load"],
+    kubectl: ["get", "describe", "apply", "delete", "logs", "exec", "config", "rollout", "scale", "port-forward", "top", "version", "cluster-info", "create", "edit", "explain", "expose", "run", "cordon", "drain"],
+    aws: ["s3", "ec2", "sts", "iam", "lambda", "dynamodb", "cloudformation", "logs", "configure", "ecr", "ecs", "eks", "ssm", "rds", "route53", "sns", "sqs", "cloudwatch"],
+    az: ["account", "group", "vm", "storage", "login", "logout", "aks", "webapp", "network", "ad", "keyvault", "acr", "appservice", "functionapp", "sql", "cosmosdb", "monitor", "role", "version"],
+    gcloud: ["config", "compute", "auth", "projects", "container", "storage", "app", "functions", "run", "sql", "iam", "logging", "services", "components"]
+};
+
+// Known CLI presets → the binary we expect on PATH + official install docs.
+const CLI_PRESET_INFO: Record<string, { bin: string; name: string; url: string }> = {
+    azure: { bin: "az", name: "Azure CLI", url: "https://learn.microsoft.com/cli/azure/install-azure-cli" },
+    aws: { bin: "aws", name: "AWS CLI", url: "https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html" },
+    gcloud: { bin: "gcloud", name: "Google Cloud CLI", url: "https://cloud.google.com/sdk/docs/install" },
+    kubectl: { bin: "kubectl", name: "kubectl", url: "https://kubernetes.io/docs/tasks/tools/" },
+    docker: { bin: "docker", name: "Docker", url: "https://docs.docker.com/get-docker/" }
+};
+
+// Returns true if `bin` is resolvable on PATH. Never throws.
+function checkCommandExists(bin: string): Promise<boolean> {
+    return new Promise((resolve) => {
+        try {
+            const { exec } = require("child_process");
+            const cmd = process.platform === "win32" ? `where ${bin}` : `command -v ${bin}`;
+            exec(cmd, { timeout: 4000, windowsHide: true }, (err: any) => resolve(!err));
+        } catch {
+            resolve(true); // if the check itself fails, don't block the session
+        }
+    });
+}
+
+// Best-effort one-line context for the chat greeting: the tool's version for a
+// scoped CLI (`<bin> --version`), or the host OS for a local shell. Never throws.
+function detectLocalContext(bin?: string): Promise<string> {
+    if (bin) {
+        return new Promise((resolve) => {
+            try {
+                const { exec } = require("child_process");
+                exec(`${bin} --version`, { timeout: 5000, windowsHide: true }, (_e: any, stdout: string, stderr: string) => {
+                    const first = `${stdout || ""}\n${stderr || ""}`
+                        .split(/\r?\n/).map((s) => s.trim()).filter(Boolean)[0] || "";
+                    if (!first || /not recognized|not found|no such file|cannot find/i.test(first)) resolve("");
+                    else resolve(first.slice(0, 100));
+                });
+            } catch { resolve(""); }
+        });
+    }
+    try {
+        const os = require("os");
+        return Promise.resolve(`${os.type()} ${os.release()}`);
+    } catch {
+        return Promise.resolve("");
+    }
+}
+
 function connectSsh(server: ManagedServerRecord): Promise<Client> {
     return new Promise((resolve, reject) => {
         const conn = new Client();
@@ -471,34 +824,48 @@ async function getLinuxStatus(conn: Client): Promise<StatusSnapshot> {
         hostname,
         os,
         uptimeSecondsRaw,
-        cpuUsageRaw,
+        cpuSampleRaw,
         memoryRaw,
         disksRaw,
         processesRaw,
         loadRaw
     ] = await Promise.all([
-        execSshCommand(conn, "hostname"),
-        execSshCommand(conn, "bash -lc 'if [ -f /etc/os-release ]; then . /etc/os-release && printf \"%s\" \"$PRETTY_NAME\"; else uname -sr; fi'"),
-        execSshCommand(conn, "bash -lc 'cut -d. -f1 /proc/uptime'"),
-        execSshCommand(conn, "bash -lc \"top -bn1 | grep 'Cpu(s)' | sed -E 's/.*, *([0-9.]+)%* id.*/\\\\1/' | awk '{printf \\\"%.2f\\\", 100 - \\$1}'\""),
-        execSshCommand(conn, "bash -lc \"awk '/MemTotal/ {total=$2} /MemAvailable/ {avail=$2} END {printf \\\"%d %d\\\", int(total/1024), int(avail/1024)}' /proc/meminfo\""),
-        execSshCommand(conn, "bash -lc 'df -P -BM --output=source,size,used,avail,pcent,target 2>/dev/null | tail -n +2'"),
-        execSshCommand(conn, "bash -lc 'ps -eo pid,comm,%cpu,%mem,rss --sort=-%cpu | head -n 6 | tail -n +2'"),
-        execSshCommand(conn, "bash -lc \"cat /proc/loadavg | awk '{printf \\\"%s %s %s\\\", \\$1, \\$2, \\$3}'\"")
+        execSshSafe(conn, "hostname"),
+        execSshSafe(conn, "sh -c 'if [ -f /etc/os-release ]; then . /etc/os-release && printf \"%s\" \"$PRETTY_NAME\"; else uname -sr; fi'"),
+        execSshSafe(conn, "sh -c 'cut -d. -f1 /proc/uptime'"),
+        // Portable CPU usage: two /proc/stat samples 1s apart; the percentage is computed in Node.
+        execSshSafe(conn, "sh -c 'read _ u n s id wa hi si rest < /proc/stat; t1=$((u+n+s+id+wa+hi+si)); i1=$((id+wa)); sleep 1; read _ u n s id wa hi si rest < /proc/stat; t2=$((u+n+s+id+wa+hi+si)); i2=$((id+wa)); echo $((t2-t1)) $((i2-i1))'"),
+        execSshSafe(conn, "sh -c \"awk '/MemTotal/ {total=$2} /MemAvailable/ {avail=$2} END {printf \\\"%d %d\\\", int(total/1024), int(avail/1024)}' /proc/meminfo\""),
+        execSshSafe(conn, "sh -c 'df -P -k 2>/dev/null | tail -n +2'"),
+        execSshSafe(conn, "sh -c 'ps -eo pid,comm,%cpu,%mem,rss --sort=-%cpu 2>/dev/null | head -n 6 | tail -n +2'"),
+        execSshSafe(conn, "sh -c 'cat /proc/loadavg'")
     ]);
 
-    const [totalMemoryMB, freeMemoryMB] = memoryRaw.split(/\s+/).map(value => parseInt(value, 10));
+    const [totalMemoryMB, freeMemoryMB] = memoryRaw.split(/\s+/).map(value => parseInt(value, 10) || 0);
     const usedMemoryMB = Math.max(0, totalMemoryMB - freeMemoryMB);
     const disks = parseLinuxDisks(disksRaw);
     const storage = aggregateStorage(disks);
-    const [one = 0, five = 0, fifteen = 0] = loadRaw.split(/\s+/).map(value => parseFloat(value));
+    const [one = 0, five = 0, fifteen = 0] = loadRaw.split(/\s+/).map(value => parseFloat(value) || 0);
+
+    // CPU usage from the two /proc/stat samples ("<totalDelta> <idleDelta>").
+    const [cpuTotalDelta = 0, cpuIdleDelta = 0] = cpuSampleRaw.split(/\s+/).map(value => parseInt(value, 10) || 0);
+    const cpuUsagePercent = cpuTotalDelta > 0
+        ? roundTo(Math.min(100, Math.max(0, (1 - cpuIdleDelta / cpuTotalDelta) * 100)), 1)
+        : 0;
+
+    // Top processes: GNU ps first; on busybox/Alpine fall back to a memory-sorted listing.
+    let processes = parseLinuxProcesses(processesRaw);
+    if (processes.length === 0) {
+        const fallbackRaw = await execSshSafe(conn, "sh -c 'ps -o pid,rss,comm 2>/dev/null | tail -n +2'");
+        processes = parseBusyboxProcesses(fallbackRaw);
+    }
 
     return {
         platform: "linux",
         hostname,
         os,
         uptime: formatUptime(parseInt(uptimeSecondsRaw, 10)),
-        cpuUsagePercent: roundTo(parseFloat(cpuUsageRaw.replace(',', '.')) || 0, 1),
+        cpuUsagePercent,
         memory: {
             totalMB: totalMemoryMB,
             usedMB: usedMemoryMB,
@@ -507,7 +874,7 @@ async function getLinuxStatus(conn: Client): Promise<StatusSnapshot> {
         },
         storage,
         disks,
-        processes: parseLinuxProcesses(processesRaw),
+        processes,
         loadAverage: {
             one: roundTo(one, 2),
             five: roundTo(five, 2),
@@ -682,8 +1049,8 @@ app.get("/api/servers", (req, res) => {
 app.post("/api/servers", (req, res) => {
     console.log("POST /api/servers received body:", req.body);
     try {
-        const { name, ip, type, username, password, port, ssh_port, s3_provider, s3_bucket, s3_region, s3_endpoint, s3_access_key, s3_secret_key, privateKey, passphrase } = req.body;
-        const sql = "INSERT INTO servers (name, ip, type, username, password, port, ssh_port, s3_provider, s3_bucket, s3_region, s3_endpoint, s3_access_key, s3_secret_key, privateKey, passphrase) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)";
+        const { name, ip, type, username, password, port, ssh_port, s3_provider, s3_bucket, s3_region, s3_endpoint, s3_access_key, s3_secret_key, privateKey, passphrase, command, cwd, initial_command, cli_preset } = req.body;
+        const sql = "INSERT INTO servers (name, ip, type, username, password, port, ssh_port, s3_provider, s3_bucket, s3_region, s3_endpoint, s3_access_key, s3_secret_key, privateKey, passphrase, command, cwd, initial_command, cli_preset) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)";
         // For Linux: port is SSH. For Windows: port is RDP, ssh_port is SSH.
         const params = [
             name,
@@ -700,7 +1067,11 @@ app.post("/api/servers", (req, res) => {
             s3_access_key,
             s3_secret_key,
             req.body.privateKey,
-            req.body.passphrase
+            req.body.passphrase,
+            command,
+            cwd,
+            initial_command,
+            cli_preset
         ];
 
         console.log("Executing SQL:", sql, "Params:", params);
@@ -726,8 +1097,8 @@ app.post("/api/servers", (req, res) => {
 // Update an existing server
 app.put("/api/servers/:id", (req, res) => {
     console.log("PUT /api/servers/" + req.params.id, req.body);
-    const { name, ip, type, username, password, port, os_detail, ssh_port, s3_provider, s3_bucket, s3_region, s3_endpoint, s3_access_key, s3_secret_key, privateKey, passphrase } = req.body;
-    const sql = "UPDATE servers SET name = ?, ip = ?, type = ?, username = ?, password = ?, port = ?, os_detail = ?, ssh_port = ?, s3_provider = ?, s3_bucket = ?, s3_region = ?, s3_endpoint = ?, s3_access_key = ?, s3_secret_key = ?, privateKey = ?, passphrase = ? WHERE id = ?";
+    const { name, ip, type, username, password, port, os_detail, ssh_port, s3_provider, s3_bucket, s3_region, s3_endpoint, s3_access_key, s3_secret_key, privateKey, passphrase, command, cwd, initial_command, cli_preset } = req.body;
+    const sql = "UPDATE servers SET name = ?, ip = ?, type = ?, username = ?, password = ?, port = ?, os_detail = ?, ssh_port = ?, s3_provider = ?, s3_bucket = ?, s3_region = ?, s3_endpoint = ?, s3_access_key = ?, s3_secret_key = ?, privateKey = ?, passphrase = ?, command = ?, cwd = ?, initial_command = ?, cli_preset = ? WHERE id = ?";
     const params = [
         name,
         ip,
@@ -745,6 +1116,10 @@ app.put("/api/servers/:id", (req, res) => {
         s3_secret_key,
         privateKey,
         passphrase,
+        command,
+        cwd,
+        initial_command,
+        cli_preset,
         req.params.id
     ];
 
@@ -1126,7 +1501,8 @@ io.on("connection", (socket) => {
     let ftp: any = null;  // Basic-FTP Client
     let s3Client: S3Client | null = null;
     let s3Bucket: string = "";
-    let connectionType: 'ssh' | 'ftp' | 's3' = 'ssh';
+    let localTerm: LocalTermHandle | null = null; // Local CLI / pty session
+    let connectionType: 'ssh' | 'ftp' | 's3' | 'local' = 'ssh';
     let ftpInProgress = false;
     let rdpClient: any = null; // RDP Client
     const bitmapQueue: any[] = [];
@@ -1201,8 +1577,80 @@ io.on("connection", (socket) => {
         // Clean up previous connections
         if (conn) { conn.end(); conn = null; }
         if (ftp && !ftp.closed) { ftp.close(); ftp = null; }
+        if (localTerm) { localTerm.kill(); localTerm = null; }
         sftp = null;
         s3Client = null;
+
+        if (config.type === 'local') {
+            connectionType = 'local';
+            try {
+                const handlers = {
+                    onData: (chunk: string) => socket.emit("ssh-output", chunk),
+                    onExit: () => {
+                        socket.emit("ssh-output", "\r\n[ShellMind] Session ended.\r\n");
+                        socket.emit("ssh-closed");
+                    }
+                };
+
+                // Known cloud/container CLIs run as a SCOPED console (a `<bin>>`
+                // prompt that only executes that tool's subcommands), not a full
+                // shell. "shell"/"custom" presets still open the real shell.
+                const presetInfo = CLI_PRESET_INFO[(config.cli_preset || "").toLowerCase()];
+                if (presetInfo) {
+                    const exists = await checkCommandExists(presetInfo.bin);
+                    const banner =
+                        `\x1b[2m${presetInfo.name} console — type subcommands (e.g. "ps"). Tab to complete, ↑/↓ history, 'exit' to close.\x1b[0m\r\n` +
+                        (exists ? "" : `\x1b[33m'${presetInfo.bin}' was not found on PATH. Install: ${presetInfo.url}\x1b[0m\r\n`);
+
+                    // Per-server command history persisted in the settings table.
+                    const serverId = config.serverId;
+                    const historyKey = serverId != null ? `cli_history:${serverId}` : null;
+                    let initialHistory: string[] = [];
+                    if (historyKey) {
+                        try {
+                            const raw = await getSettingValue(historyKey);
+                            if (raw) initialHistory = JSON.parse(raw);
+                        } catch { /* ignore corrupt history */ }
+                    }
+
+                    localTerm = startScopedCli(
+                        {
+                            bin: presetInfo.bin,
+                            cwd: config.cwd,
+                            banner,
+                            initialCommand: exists ? config.initialCommand : undefined,
+                            subcommands: CLI_SUBCOMMANDS[presetInfo.bin] || [],
+                            initialHistory,
+                            onHistoryChange: historyKey
+                                ? (hist) => { void setSettingValue(historyKey, JSON.stringify(hist)); }
+                                : undefined
+                        },
+                        handlers
+                    );
+                } else {
+                    localTerm = startLocalTerminal(
+                        {
+                            command: config.command,
+                            cwd: config.cwd,
+                            initialCommand: config.initialCommand,
+                            cols: termCols,
+                            rows: termRows
+                        },
+                        handlers
+                    );
+                }
+                socket.emit("connection-ready");
+
+                // Surface the tool/OS version to the chat greeting (best-effort).
+                detectLocalContext(presetInfo ? presetInfo.bin : undefined)
+                    .then((detail) => { if (detail) socket.emit("os-detected", detail); })
+                    .catch(() => { /* ignore */ });
+            } catch (err: any) {
+                console.error("Local terminal error:", err);
+                socket.emit("ssh-error", "Local terminal error: " + (err?.message || err));
+            }
+            return;
+        }
 
         if (config.type === 's3') {
             console.log("Switched connectionType to S3");
@@ -1322,6 +1770,7 @@ io.on("connection", (socket) => {
                 stream.on("close", () => {
                     conn!.end();
                     socket.emit("ssh-output", "\r\nConnection closed.\r\n");
+                    socket.emit("ssh-closed");
                 }).on("data", (data: any) => {
                     socket.emit("ssh-output", data.toString());
                 });
@@ -1638,7 +2087,6 @@ io.on("connection", (socket) => {
 
                 await s3Client.send(command);
                 socket.emit("sftp-mkdir-success", fullPath);
-                socket.emit("sftp-write-success", fullPath);
             } catch (err: any) {
                 console.error("S3 Mkdir Error:", err);
                 socket.emit("sftp-mkdir-error", "S3 Mkdir Error: " + err.message);
@@ -1666,7 +2114,6 @@ io.on("connection", (socket) => {
                 }
 
                 socket.emit("sftp-mkdir-success", fullPath);
-                socket.emit("sftp-write-success", fullPath);
             } catch (err: any) {
                 socket.emit("sftp-mkdir-error", "FTP Mkdir Error: " + err.message);
                 socket.emit("sftp-error", "FTP Mkdir Error: " + err.message);
@@ -1685,7 +2132,6 @@ io.on("connection", (socket) => {
                 return socket.emit("sftp-error", "Mkdir error: " + err.message);
             }
             socket.emit("sftp-mkdir-success", fullPath);
-            socket.emit("sftp-write-success", fullPath);
         });
     });
 
@@ -1924,6 +2370,11 @@ io.on("connection", (socket) => {
     let currentFtpPath = "/";
 
     socket.on("ssh-input", async (data: string) => {
+        if (connectionType === 'local') {
+            localTerm?.write(data);
+            return;
+        }
+
         if (connectionType === 'ftp') {
             // Echo back to terminal (pasting or typing)
             socket.emit("ssh-output", data);
@@ -2055,6 +2506,7 @@ io.on("connection", (socket) => {
         if (sshStream && typeof sshStream.setWindow === "function") {
             sshStream.setWindow(rows, cols, 0, 0);
         }
+        localTerm?.resize(cols, rows);
     });
 
     // --- RDP Connection Handling ---
@@ -2233,6 +2685,7 @@ io.on("connection", (socket) => {
     socket.on("disconnect", () => {
         if (conn) conn.end();
         if (ftp) ftp.close();
+        if (localTerm) { localTerm.kill(); localTerm = null; }
         clearBitmapFlush();
         if (rdpClient) { try { rdpClient.close(); } catch (e) { } rdpClient = null; }
     });
