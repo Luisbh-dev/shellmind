@@ -22,7 +22,7 @@ interface FileExplorerProps {
     isVisible: boolean;
 }
 
-type UploadJob = { name: string; status: 'pending' | 'uploading' | 'done' | 'error' };
+type UploadJob = { name: string; status: 'pending' | 'uploading' | 'done' | 'error'; progress: number };
 
 const fileIconFor = (name: string) => {
     const ext = name.split('.').pop()?.toLowerCase() || '';
@@ -273,7 +273,71 @@ export default function FileExplorer({ server, isVisible }: FileExplorerProps) {
         socket.emit('sftp-read', requested);
     };
 
-    // ---- Upload (multi-file, sequential) -----------------------------------
+    // ---- Upload (chunked, with progress) -----------------------------------
+    const CHUNK_SIZE = 256 * 1024; // raw bytes per chunk (well under the socket limit)
+
+    // Streams one file in acked chunks so large files don't exceed the socket
+    // message limit, and reports progress as a percentage.
+    const uploadFileChunked = (file: File, onProgress: (pct: number) => void) =>
+        new Promise<void>((resolve, reject) => {
+            const sock = socket;
+            if (!sock) return reject(new Error('Not connected'));
+
+            let offset = 0;
+            let settled = false;
+            let timer: number | undefined;
+
+            const cleanup = () => {
+                if (timer) window.clearTimeout(timer);
+                sock.off('sftp-upload-ready', onReady);
+                sock.off('sftp-upload-ack', onAck);
+                sock.off('sftp-upload-error', onError);
+                sock.off('sftp-write-success', onDone);
+            };
+            const finish = (err?: Error) => {
+                if (settled) return;
+                settled = true;
+                cleanup();
+                if (err) { try { sock.emit('sftp-upload-cancel'); } catch { /* ignore */ } reject(err); }
+                else resolve();
+            };
+            const armTimer = () => {
+                if (timer) window.clearTimeout(timer);
+                timer = window.setTimeout(() => finish(new Error('Upload timed out')), 60000);
+            };
+
+            const sendNextChunk = () => {
+                if (settled) return;
+                if (offset >= file.size) { sock.emit('sftp-upload-end'); armTimer(); return; }
+                const slice = file.slice(offset, Math.min(offset + CHUNK_SIZE, file.size));
+                const reader = new FileReader();
+                reader.onerror = () => finish(new Error('Could not read file'));
+                reader.onload = () => {
+                    if (settled) return;
+                    const b64 = ((reader.result as string).split(',')[1]) || '';
+                    sock.emit('sftp-upload-chunk', b64);
+                    armTimer();
+                };
+                reader.readAsDataURL(slice);
+            };
+
+            function onReady() { armTimer(); sendNextChunk(); }
+            function onAck() {
+                offset = Math.min(offset + CHUNK_SIZE, file.size);
+                onProgress(file.size ? Math.round((offset / file.size) * 100) : 100);
+                sendNextChunk();
+            }
+            function onError(msg: string) { finish(new Error(msg || 'Upload error')); }
+            function onDone() { finish(); }
+
+            sock.on('sftp-upload-ready', onReady);
+            sock.on('sftp-upload-ack', onAck);
+            sock.on('sftp-upload-error', onError);
+            sock.on('sftp-write-success', onDone);
+            sock.emit('sftp-upload-start', { path: joinPath(file.name) });
+            armTimer();
+        });
+
     const uploadFiles = async (fileList: File[]) => {
         if (!socket || fileList.length === 0) return;
         if (isUploadingRef.current) {
@@ -281,48 +345,29 @@ export default function FileExplorer({ server, isVisible }: FileExplorerProps) {
             return;
         }
         isUploadingRef.current = true;
+        setUploads(fileList.map((f) => ({ name: f.name, status: 'pending', progress: 0 })));
 
-        setUploads(fileList.map((f) => ({ name: f.name, status: 'pending' })));
-
+        let failed = 0;
         for (let i = 0; i < fileList.length; i++) {
             const file = fileList[i];
-            setUploads((prev) => prev.map((u, idx) => idx === i ? { ...u, status: 'uploading' } : u));
-
+            setUploads((prev) => prev.map((u, idx) => idx === i ? { ...u, status: 'uploading', progress: 0 } : u));
             try {
-                await new Promise<void>((resolve, reject) => {
-                    const reader = new FileReader();
-                    reader.onerror = () => reject(new Error('read failed'));
-                    reader.onload = () => {
-                        const base64 = (reader.result as string).split(',')[1];
-                        const fullPath = joinPath(file.name);
-
-                        const onSuccess = () => { cleanup(); resolve(); };
-                        const onError = (err: string) => { cleanup(); reject(new Error(err)); };
-                        const timer = window.setTimeout(() => { cleanup(); reject(new Error('timeout')); }, 60000);
-                        const cleanup = () => {
-                            window.clearTimeout(timer);
-                            socket.off('sftp-write-success', onSuccess);
-                            socket.off('sftp-error', onError);
-                        };
-
-                        socket.once('sftp-write-success', onSuccess);
-                        socket.once('sftp-error', onError);
-                        socket.emit('sftp-write', { path: fullPath, data: base64 });
-                    };
-                    reader.readAsDataURL(file);
+                // eslint-disable-next-line no-await-in-loop
+                await uploadFileChunked(file, (pct) => {
+                    setUploads((prev) => prev.map((u, idx) => idx === i ? { ...u, progress: pct } : u));
                 });
-                setUploads((prev) => prev.map((u, idx) => idx === i ? { ...u, status: 'done' } : u));
+                setUploads((prev) => prev.map((u, idx) => idx === i ? { ...u, status: 'done', progress: 100 } : u));
             } catch (err: any) {
+                failed += 1;
                 setUploads((prev) => prev.map((u, idx) => idx === i ? { ...u, status: 'error' } : u));
                 toast.error(`Upload failed: ${file.name}`, err?.message);
             }
         }
 
-        const failed = await new Promise<number>((r) => setUploads((prev) => { r(prev.filter((u) => u.status === 'error').length); return prev; }));
-        if (!failed) toast.success(`Uploaded ${fileList.length} file${fileList.length > 1 ? 's' : ''}`);
         isUploadingRef.current = false;
+        if (!failed) toast.success(`Uploaded ${fileList.length} file${fileList.length > 1 ? 's' : ''}`);
         socket.emit('sftp-list', currentPathRef.current);
-        window.setTimeout(() => setUploads([]), 1800);
+        window.setTimeout(() => setUploads([]), 2000);
     };
 
     const handleUploadInput = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -604,14 +649,26 @@ export default function FileExplorer({ server, isVisible }: FileExplorerProps) {
                     <div className="flex items-center justify-between border-b border-white/5 px-3 py-2 text-xs text-zinc-400">
                         <span>Uploading {uploads.filter(u => u.status === 'done').length}/{uploads.length}</span>
                     </div>
-                    <div className="max-h-40 overflow-y-auto scrollbar-thin p-2 space-y-1">
+                    <div className="max-h-44 overflow-y-auto scrollbar-thin p-2 space-y-2">
                         {uploads.map((u, i) => (
-                            <div key={i} className="flex items-center gap-2 text-xs">
-                                {u.status === 'uploading' && <Loader2 className="w-3.5 h-3.5 animate-spin text-brand-400 shrink-0" />}
-                                {u.status === 'done' && <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />}
-                                {u.status === 'error' && <X className="w-3.5 h-3.5 text-rose-400 shrink-0" />}
-                                {u.status === 'pending' && <span className="w-1.5 h-1.5 rounded-full bg-zinc-600 shrink-0" />}
-                                <span className="truncate text-zinc-300">{u.name}</span>
+                            <div key={i} className="space-y-1">
+                                <div className="flex items-center gap-2 text-xs">
+                                    {u.status === 'uploading' && <Loader2 className="w-3.5 h-3.5 animate-spin text-brand-400 shrink-0" />}
+                                    {u.status === 'done' && <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />}
+                                    {u.status === 'error' && <X className="w-3.5 h-3.5 text-rose-400 shrink-0" />}
+                                    {u.status === 'pending' && <span className="w-1.5 h-1.5 rounded-full bg-zinc-600 shrink-0" />}
+                                    <span className="truncate text-zinc-300 flex-1">{u.name}</span>
+                                    {u.status === 'uploading' && <span className="shrink-0 text-[10px] text-zinc-400 font-mono">{u.progress}%</span>}
+                                    {u.status === 'error' && <span className="shrink-0 text-[10px] text-rose-400">failed</span>}
+                                </div>
+                                {(u.status === 'uploading' || u.status === 'pending') && (
+                                    <div className="h-1 rounded-full bg-white/10 overflow-hidden">
+                                        <div
+                                            className="h-full rounded-full bg-brand-500 transition-[width] duration-200"
+                                            style={{ width: `${u.status === 'uploading' ? u.progress : 0}%` }}
+                                        />
+                                    </div>
+                                )}
                             </div>
                         ))}
                     </div>

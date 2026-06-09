@@ -1,6 +1,6 @@
 {
   "name": "shellmind",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "ShellMind is a self-hosted remote workspace for terminal access, file management, remote desktop, and AI assistance.",
   "author": "Luisbh",
   "private": true,
@@ -60,6 +60,7 @@
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.956.0",
+    "@aws-sdk/lib-storage": "^3.1065.0",
     "@electerm/rdpjs": "^1.0.0",
     "@google/generative-ai": "^0.24.1",
     "@xterm/addon-search": "^0.16.0",

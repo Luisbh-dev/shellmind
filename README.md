@@ -142,6 +142,10 @@ For private desktop builds, prefer injecting secrets at build or runtime instead
 
 ## Release notes
 
+### 0.3.1
+- Hotfix: large file uploads no longer stall. Uploads are now streamed in acked chunks (with a per-file progress bar / percentage) instead of a single oversized socket message.
+- True streaming uploads across all backends: SFTP (write stream), FTP (`PassThrough` → `uploadFrom`), and S3 (multipart via `@aws-sdk/lib-storage` — no in-memory buffering, no 5 GB single-object cap).
+
 ### 0.3.0
 - New **Local CLI** connection type: scoped tool consoles (`az>`, `aws>`, `docker>`, …) that only run that tool's subcommands and surface your identity on connect, plus a full **System shell** (via `node-pty`) and a custom-command mode. Detects missing CLIs and links the installer.
 - Terminal clipboard support: paste (`Ctrl+V`, `Ctrl+Shift+V`, right-click, middle-click) and copy (`Ctrl+Shift+C`), with bracketed-paste handling and `Ctrl+C` preserved for `SIGINT`.

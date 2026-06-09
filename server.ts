@@ -1021,7 +1021,8 @@ const io = new Server(httpServer, {
         origin: "*", // Allow Vite dev server
         methods: ["GET", "POST"]
     },
-    transports: ['websocket', 'polling'] // Allow both but prefer websocket
+    transports: ['websocket', 'polling'], // Allow both but prefer websocket
+    maxHttpBufferSize: 1e7 // 10 MB — uploads are chunked, but keep headroom per message
 });
 
 app.use(cors());
@@ -1503,6 +1504,13 @@ io.on("connection", (socket) => {
     let s3Bucket: string = "";
     let localTerm: LocalTermHandle | null = null; // Local CLI / pty session
     let connectionType: 'ssh' | 'ftp' | 's3' | 'local' = 'ssh';
+    let uploadState: {
+        path: string;
+        sftpStream?: any;        // ssh2 SFTP write stream
+        pass?: any;              // PassThrough feeding FTP uploadFrom / S3 multipart Upload
+        done?: Promise<any>;     // resolves when the FTP/S3 upload finishes
+        s3Upload?: any;          // @aws-sdk/lib-storage Upload instance (for abort)
+    } | null = null;
     let ftpInProgress = false;
     let rdpClient: any = null; // RDP Client
     const bitmapQueue: any[] = [];
@@ -2066,6 +2074,115 @@ io.on("connection", (socket) => {
             if (err) return socket.emit("sftp-error", "Write error: " + err.message);
             socket.emit("sftp-write-success", path);
         });
+    });
+
+    // --- Chunked upload (large files + progress) ---------------------------
+    // Protocol: start -> (chunk -> ack)* -> end. Each chunk is acked so the
+    // client streams with backpressure instead of sending the whole file in one
+    // socket message (which would exceed maxHttpBufferSize and drop the upload).
+    socket.on("sftp-upload-start", ({ path }) => {
+        try { uploadState?.sftpStream?.destroy?.(); } catch { /* ignore */ }
+        try { uploadState?.pass?.destroy?.(); } catch { /* ignore */ }
+        try { uploadState?.s3Upload?.abort?.(); } catch { /* ignore */ }
+        uploadState = null;
+
+        try {
+            const { PassThrough } = require("stream");
+
+            if (connectionType === 's3') {
+                if (!s3Client) return socket.emit("sftp-upload-error", "S3 not initialized");
+                const { Upload } = require("@aws-sdk/lib-storage");
+                let key = path;
+                if (key.startsWith("/")) key = key.substring(1);
+                const pass = new PassThrough();
+                // Multipart streaming: parts are flushed to S3 as data arrives —
+                // no full-file buffering and no 5 GB single-PutObject cap.
+                const up = new Upload({
+                    client: s3Client,
+                    params: { Bucket: s3Bucket, Key: key, Body: pass },
+                    queueSize: 4,
+                    partSize: 5 * 1024 * 1024
+                });
+                const done = up.done();
+                done.catch((err: any) => {
+                    if (uploadState && uploadState.pass === pass) {
+                        uploadState = null;
+                        socket.emit("sftp-upload-error", "S3 Write Error: " + err.message);
+                    }
+                });
+                uploadState = { path, pass, done, s3Upload: up };
+            } else if (connectionType === 'ftp') {
+                if (!ftp || ftp.closed) return socket.emit("sftp-upload-error", "FTP not initialized");
+                const pass = new PassThrough();
+                const done = ftp.uploadFrom(pass, normalizeFtpPath(path));
+                done.catch((err: any) => {
+                    if (uploadState && uploadState.pass === pass) {
+                        uploadState = null;
+                        socket.emit("sftp-upload-error", "FTP Write Error: " + err.message);
+                    }
+                });
+                uploadState = { path, pass, done };
+            } else {
+                if (!sftp) return socket.emit("sftp-upload-error", connectionError ? `SFTP Error: ${connectionError}` : "Unable to establish file connection.");
+                const stream = sftp.createWriteStream(path);
+                stream.on("error", (err: any) => {
+                    uploadState = null;
+                    socket.emit("sftp-upload-error", "Write error: " + err.message);
+                });
+                uploadState = { path, sftpStream: stream };
+            }
+            socket.emit("sftp-upload-ready", path);
+        } catch (err: any) {
+            socket.emit("sftp-upload-error", err?.message || String(err));
+        }
+    });
+
+    socket.on("sftp-upload-chunk", (data: string) => {
+        if (!uploadState) return socket.emit("sftp-upload-error", "No active upload");
+        let buffer: Buffer;
+        try { buffer = Buffer.from(data, "base64"); } catch { return socket.emit("sftp-upload-error", "Bad chunk"); }
+
+        try {
+            if (uploadState.pass) {
+                uploadState.pass.write(buffer, () => socket.emit("sftp-upload-ack"));
+            } else if (uploadState.sftpStream) {
+                uploadState.sftpStream.write(buffer, () => socket.emit("sftp-upload-ack"));
+            } else {
+                socket.emit("sftp-upload-error", "No active upload");
+            }
+        } catch (err: any) {
+            socket.emit("sftp-upload-error", err?.message || String(err));
+        }
+    });
+
+    socket.on("sftp-upload-end", async () => {
+        const state = uploadState;
+        if (!state) return socket.emit("sftp-upload-error", "No active upload");
+        uploadState = null;
+        try {
+            if (state.pass) {
+                // FTP and S3 both finish when the source stream ends.
+                state.pass.end();
+                await state.done;
+                socket.emit("sftp-write-success", state.path);
+            } else if (state.sftpStream) {
+                await new Promise<void>((resolve, reject) => {
+                    state.sftpStream.once("error", reject);
+                    state.sftpStream.end(() => resolve());
+                });
+                socket.emit("sftp-write-success", state.path);
+            }
+        } catch (err: any) {
+            socket.emit("sftp-upload-error", err?.message || String(err));
+        }
+    });
+
+    socket.on("sftp-upload-cancel", () => {
+        const state = uploadState;
+        uploadState = null;
+        try { state?.sftpStream?.destroy?.(); } catch { /* ignore */ }
+        try { state?.pass?.destroy?.(new Error("cancelled")); } catch { /* ignore */ }
+        try { state?.s3Upload?.abort?.(); } catch { /* ignore */ }
     });
 
     socket.on("sftp-mkdir", async ({ parentPath, name }) => {
@@ -2686,6 +2803,10 @@ io.on("connection", (socket) => {
         if (conn) conn.end();
         if (ftp) ftp.close();
         if (localTerm) { localTerm.kill(); localTerm = null; }
+        try { uploadState?.sftpStream?.destroy?.(); } catch (e) { }
+        try { uploadState?.pass?.destroy?.(); } catch (e) { }
+        try { uploadState?.s3Upload?.abort?.(); } catch (e) { }
+        uploadState = null;
         clearBitmapFlush();
         if (rdpClient) { try { rdpClient.close(); } catch (e) { } rdpClient = null; }
     });
