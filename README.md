@@ -1,6 +1,6 @@
 # ShellMind
 
-> Version 0.3.2
+> Version 0.3.3
 
 ShellMind is a self-hosted remote workspace that combines terminal access, file management, remote desktop, and AI assistance in one focused interface.
 
@@ -164,6 +164,11 @@ For the public GitHub repository, do not commit provider API keys.
 For private desktop builds, prefer injecting secrets at build or runtime instead of hardcoding them in the repository. If the app will be distributed broadly, the safest approach is to route AI traffic through your own backend or proxy and keep the provider key only on infrastructure you control.
 
 ## Release notes
+
+### 0.3.3
+- Security maintenance: resolved all known dependency advisories (`npm audit` reports 0 vulnerabilities, down from 41).
+- Patched runtime/production dependencies: `basic-ftp` (path traversal), `socket.io-parser`, `ws`, `engine.io`, `express`/`path-to-regexp`/`qs`, and `node-forge` (certificate-chain validation, via the RDP libraries).
+- Upgraded `sqlite3` 5 → 6 (prebuilt binaries, drops the vulnerable `node-gyp`/`tar`/`cacache` build chain) and the dev-only `concurrently` 9 → 10 (removes the `shell-quote` advisory). No application code changes.
 
 ### 0.3.2
 - MiniMax M3 enabled (Anthropic-compatible API) with automatic fallback to M2.7 and a larger reasoning token budget.
