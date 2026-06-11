@@ -900,10 +900,11 @@ export default function TerminalComponent({ server, onOsDetected, onOutput, init
           ? (server.ssh_port || 22)
           : (server.port || 22);
 
+      // Credentials are resolved server-side from serverId; they never
+      // travel through the browser.
       socket.emit("start-ssh", {
           host: server.ip,
           username: server.username,
-          password: server.password,
           type: server.type,
           port: portToUse,
           // Local CLI session fields (ignored by remote connection types).

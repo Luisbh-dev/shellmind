@@ -99,8 +99,49 @@ const MODEL_FALLBACKS: Record<string, string> = {
     "gemini-3-flash-preview": "gemini-2.5-flash",
     "gemini-2.5-flash": "gemma-3-27b-it",
     "gemma-3-27b-it": "gemini-2.5-flash",
+    "MiniMax-M3": "MiniMax-M2.7",
     "MiniMax-M2.7": "MiniMax-M2.7",
 };
+// Anthropic-style max_tokens includes reasoning tokens, so the thinking model
+// gets a larger budget or it can exhaust it before emitting any final text.
+const DEFAULT_MAX_TOKENS = 6144;
+const MODEL_MAX_TOKENS: Record<string, number> = {
+    "MiniMax-M3": 16384,
+};
+
+type ChatTurn = { role: "user" | "assistant"; content: string };
+
+const MAX_HISTORY_TURNS = 12;
+const MAX_HISTORY_TURN_CHARS = 4000;
+
+// Normalizes the conversation history sent by the frontend into a transcript
+// the providers accept: valid roles only, consecutive same-role turns merged,
+// oversized turns truncated, and the transcript always starting with "user".
+function sanitizeChatHistory(raw: any): ChatTurn[] {
+    if (!Array.isArray(raw)) return [];
+
+    const turns: ChatTurn[] = [];
+    for (const item of raw) {
+        const role = item?.role === "assistant" || item?.role === "user" ? item.role : null;
+        const content = typeof item?.content === "string" ? item.content.trim() : "";
+        if (!role || !content) continue;
+
+        const text = content.length > MAX_HISTORY_TURN_CHARS
+            ? `${content.slice(0, MAX_HISTORY_TURN_CHARS)}\n[...truncated]`
+            : content;
+
+        const last = turns[turns.length - 1];
+        if (last && last.role === role) {
+            last.content += `\n\n${text}`;
+        } else {
+            turns.push({ role, content: text });
+        }
+    }
+
+    const recent = turns.slice(-MAX_HISTORY_TURNS);
+    while (recent.length && recent[0].role === "assistant") recent.shift();
+    return recent;
+}
 
 function isAiProvider(value: any): value is AiProvider {
     return value === "gemini" || value === "minimax";
@@ -245,6 +286,101 @@ async function sendMiniMaxProxyRequest(headers: Record<string, string>, body: ob
                 });
             });
         });
+
+        request.on("error", reject);
+        request.write(bodyText);
+        request.end();
+    });
+}
+
+// Streaming variant: forwards Anthropic-style SSE text deltas as they arrive.
+// Non-stream upstream responses (errors, or a proxy that ignored `stream`)
+// are buffered whole and returned via errorPayload/rawErrorBody instead.
+// Aborting `signal` destroys the upstream request, so generation actually
+// stops at the proxy instead of running (and billing) to completion.
+async function streamMiniMaxProxyRequest(
+    headers: Record<string, string>,
+    body: object,
+    onDelta: (text: string) => void,
+    signal?: AbortSignal
+): Promise<{
+    statusCode: number;
+    statusText: string;
+    errorPayload: any;
+    rawErrorBody: string;
+    emittedText: string;
+}> {
+    const targetUrl = new URL(`${MINIMAX_PROXY_BASE_URL}/messages`);
+    const transport = targetUrl.protocol === "http:" ? http : https;
+    const bodyText = JSON.stringify(body);
+
+    return new Promise((resolve, reject) => {
+        const request = transport.request(targetUrl, {
+            method: "POST",
+            headers: {
+                ...headers,
+                "content-length": Buffer.byteLength(bodyText).toString()
+            }
+        }, (response) => {
+            const statusCode = response.statusCode || 0;
+            const statusText = response.statusMessage || "";
+            const isEventStream = String(response.headers["content-type"] || "").includes("text/event-stream");
+
+            if (statusCode >= 400 || !isEventStream) {
+                const chunks: Buffer[] = [];
+                response.on("data", (chunk) => chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)));
+                response.on("end", () => {
+                    const rawErrorBody = Buffer.concat(chunks).toString("utf8");
+                    let errorPayload: any = null;
+                    try {
+                        errorPayload = rawErrorBody ? JSON.parse(rawErrorBody) : null;
+                    } catch {
+                        errorPayload = null;
+                    }
+                    resolve({ statusCode, statusText, errorPayload, rawErrorBody, emittedText: "" });
+                });
+                response.on("error", reject);
+                return;
+            }
+
+            let buffer = "";
+            let emittedText = "";
+            response.setEncoding("utf8");
+
+            response.on("data", (chunk: string) => {
+                buffer += chunk;
+                let separator;
+                while ((separator = buffer.indexOf("\n\n")) !== -1) {
+                    const rawEvent = buffer.slice(0, separator);
+                    buffer = buffer.slice(separator + 2);
+
+                    for (const line of rawEvent.split("\n")) {
+                        if (!line.startsWith("data:")) continue;
+                        const dataStr = line.slice(5).trim();
+                        if (!dataStr || dataStr === "[DONE]") continue;
+
+                        try {
+                            const event = JSON.parse(dataStr);
+                            // Thinking deltas are skipped on purpose: only the
+                            // final user-facing text reaches the client.
+                            if (event?.type === "content_block_delta" && event?.delta?.type === "text_delta" && event.delta.text) {
+                                emittedText += event.delta.text;
+                                onDelta(event.delta.text);
+                            }
+                        } catch { /* ignore malformed SSE lines */ }
+                    }
+                }
+            });
+
+            response.on("end", () => resolve({ statusCode, statusText, errorPayload: null, rawErrorBody: "", emittedText }));
+            response.on("error", reject);
+        });
+
+        if (signal) {
+            const onAbort = () => request.destroy(new Error("Client aborted the request"));
+            if (signal.aborted) onAbort();
+            else signal.addEventListener("abort", onAbort, { once: true });
+        }
 
         request.on("error", reject);
         request.write(bodyText);
@@ -639,7 +775,16 @@ function startScopedCli(
     };
 
     const runLine = (raw: string) => {
-        const input = raw.trim();
+        let input = raw.trim();
+
+        // Tolerate pasted/AI-generated lines that echo the console prompt or
+        // repeat the tool name: "docker> ps", "docker> docker ps" and
+        // "docker docker ps" all normalize to "ps".
+        input = input.replace(new RegExp(`^(?:${bin}>\\s*)+`, "i"), "").trim();
+        while (new RegExp(`^${bin}(?:\\s+${bin})+(?:\\s|$)`, "i").test(input)) {
+            input = input.replace(new RegExp(`^${bin}\\s+`, "i"), "").trim();
+        }
+
         if (!input) { writePrompt(); return; }
         const lower = input.toLowerCase();
         if (lower === "exit" || lower === "quit") { handlers.onData("\r\n"); handlers.onExit(); return; }
@@ -935,8 +1080,39 @@ async function getWindowsStatus(conn: Client): Promise<StatusSnapshot> {
     };
 }
 
-async function callMiniMaxCompatibleAnthropicApi(clientApiKey: string | null, modelName: string, fullPrompt: string): Promise<string> {
-    const sendRequest = async (includeClientKey: boolean, promptText: string) => {
+async function callMiniMaxCompatibleAnthropicApi(
+    clientApiKey: string | null,
+    modelName: string,
+    systemPrompt: string,
+    history: ChatTurn[],
+    userMessage: string,
+    onDelta?: (text: string) => void,
+    signal?: AbortSignal
+): Promise<string> {
+    // Anthropic-compatible messages must alternate roles and start with "user";
+    // sanitizeChatHistory guarantees that, so only the final turn needs merging.
+    const buildMessages = (finalUserText: string) => {
+        const turns: ChatTurn[] = history.map(turn => ({ ...turn }));
+        const last = turns[turns.length - 1];
+
+        if (last && last.role === "user") {
+            last.content += `\n\n${finalUserText}`;
+        } else {
+            turns.push({ role: "user", content: finalUserText });
+        }
+
+        return turns.map(turn => ({
+            role: turn.role,
+            content: [
+                {
+                    type: "text",
+                    text: turn.content
+                }
+            ]
+        }));
+    };
+
+    const buildHeaders = (includeClientKey: boolean) => {
         const headers: Record<string, string> = {
             "content-type": "application/json",
             "anthropic-version": "2023-06-01"
@@ -954,28 +1130,63 @@ async function callMiniMaxCompatibleAnthropicApi(clientApiKey: string | null, mo
             headers["x-minimax-api-key"] = clientApiKey;
         }
 
-        const response = await sendMiniMaxProxyRequest(headers, {
-            model: modelName,
-            max_tokens: 6144,
-            system: "You are a helpful assistant.",
-            messages: [
-                {
-                    role: "user",
-                    content: [
-                        {
-                            type: "text",
-                            text: promptText
-                        }
-                    ]
-                }
-            ]
-        });
-
-        return response;
+        return headers;
     };
 
+    const buildBody = (finalUserText: string, stream: boolean) => ({
+        model: modelName,
+        max_tokens: MODEL_MAX_TOKENS[modelName] || DEFAULT_MAX_TOKENS,
+        system: systemPrompt,
+        messages: buildMessages(finalUserText),
+        ...(stream ? { stream: true } : {})
+    });
+
+    const sendRequest = (includeClientKey: boolean, finalUserText: string) =>
+        sendMiniMaxProxyRequest(buildHeaders(includeClientKey), buildBody(finalUserText, false));
+
     const shouldUseClientKey = ALLOW_CLIENT_MINIMAX_KEY && Boolean(clientApiKey);
-    let { statusCode, statusText, payload, rawBody } = await sendRequest(shouldUseClientKey, fullPrompt);
+
+    if (onDelta) {
+        const streamOnce = (includeClientKey: boolean, finalUserText: string) =>
+            streamMiniMaxProxyRequest(buildHeaders(includeClientKey), buildBody(finalUserText, true), onDelta, signal);
+
+        const errorMessageOf = (result: { errorPayload: any; statusText: string; rawErrorBody: string }) =>
+            result.errorPayload?.error?.message || result.errorPayload?.message || result.statusText || result.rawErrorBody || "Unknown MiniMax API error";
+
+        let result = await streamOnce(shouldUseClientKey, userMessage);
+
+        // 4xx responses never stream deltas, so retrying cannot duplicate text.
+        if (result.statusCode >= 400 && shouldUseClientKey && shouldRetryMiniMaxWithoutClientKey(result.statusCode, errorMessageOf(result))) {
+            console.warn("[MiniMax Proxy] Client MiniMax key failed (stream). Retrying with managed proxy key.");
+            result = await streamOnce(false, userMessage);
+        }
+
+        // The proxy answered OK but as plain JSON (stream not honored).
+        if (result.statusCode < 400 && !result.emittedText && result.errorPayload) {
+            const text = extractMiniMaxText(result.errorPayload);
+            if (text) {
+                onDelta(text);
+                return text;
+            }
+        }
+
+        // Stream finished with thinking only — force a final answer.
+        if (result.statusCode < 400 && !result.emittedText) {
+            console.warn("[MiniMax Proxy] Stream had no final text. Retrying with forced final answer.");
+            result = await streamOnce(false, `${userMessage}\n\nIMPORTANT: Return a final user-facing answer as a text block. Do not return thinking only.`);
+        }
+
+        if (result.statusCode >= 400) {
+            throw new Error(`${result.statusCode} ${errorMessageOf(result)}`.trim());
+        }
+
+        if (!result.emittedText) {
+            throw new Error("MiniMax returned no final text content (stream).");
+        }
+
+        return result.emittedText;
+    }
+    let { statusCode, statusText, payload, rawBody } = await sendRequest(shouldUseClientKey, userMessage);
     let text = extractMiniMaxText(payload);
 
     if (statusCode >= 400 && shouldUseClientKey) {
@@ -983,19 +1194,19 @@ async function callMiniMaxCompatibleAnthropicApi(clientApiKey: string | null, mo
 
         if (shouldRetryMiniMaxWithoutClientKey(statusCode, errorMessage)) {
             console.warn("[MiniMax Proxy] Client MiniMax key failed. Retrying with managed proxy key.");
-            ({ statusCode, statusText, payload, rawBody } = await sendRequest(false, fullPrompt));
+            ({ statusCode, statusText, payload, rawBody } = await sendRequest(false, userMessage));
             text = extractMiniMaxText(payload);
         }
     }
 
     if (statusCode < 400 && !text && shouldUseClientKey) {
         console.warn("[MiniMax Proxy] Response had no final text with client key. Retrying with managed proxy key.");
-        ({ statusCode, statusText, payload, rawBody } = await sendRequest(false, fullPrompt));
+        ({ statusCode, statusText, payload, rawBody } = await sendRequest(false, userMessage));
         text = extractMiniMaxText(payload);
     }
 
     if (statusCode < 400 && !text) {
-        const forcedFinalPrompt = `${fullPrompt}\n\nIMPORTANT: Return a final user-facing answer as a text block. Do not return thinking only.`;
+        const forcedFinalPrompt = `${userMessage}\n\nIMPORTANT: Return a final user-facing answer as a text block. Do not return thinking only.`;
         console.warn(`[MiniMax Proxy] Response had no final text. Retrying with forced final answer. ${summarizeMiniMaxPayload(payload)}`);
         ({ statusCode, statusText, payload, rawBody } = await sendRequest(false, forcedFinalPrompt));
         text = extractMiniMaxText(payload);
@@ -1014,27 +1225,75 @@ async function callMiniMaxCompatibleAnthropicApi(clientApiKey: string | null, mo
     return text;
 }
 
+// Browser pages from arbitrary origins must not be able to read this API or
+// drive the socket (credential/command access). Allowed: requests with no
+// Origin (curl, same-origin) or "null" (the Electron build loads via file://),
+// localhost on any port (Vite dev, the bundled app), and any extra origins
+// listed in the ALLOWED_ORIGINS env var (comma-separated, for web deploys).
+const EXTRA_ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || "")
+    .split(",")
+    .map(origin => origin.trim().replace(/\/+$/, ""))
+    .filter(Boolean);
+
+function isAllowedOrigin(origin: string | undefined): boolean {
+    if (!origin || origin === "null") return true;
+
+    try {
+        const { hostname } = new URL(origin);
+        if (hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1" || hostname === "[::1]") {
+            return true;
+        }
+    } catch {
+        return false;
+    }
+
+    return EXTRA_ALLOWED_ORIGINS.includes(origin.replace(/\/+$/, ""));
+}
+
+const corsOriginCheck = (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
+    callback(null, isAllowedOrigin(origin));
+};
+
 const app = express();
 const httpServer = createServer(app);
 const io = new Server(httpServer, {
     cors: {
-        origin: "*", // Allow Vite dev server
+        origin: corsOriginCheck,
         methods: ["GET", "POST"]
+    },
+    // CORS only gates the polling handshake; raw WebSocket upgrades are not
+    // subject to CORS, so the Origin header is verified here as well.
+    allowRequest: (req, callback) => {
+        callback(null, isAllowedOrigin(req.headers.origin));
     },
     transports: ['websocket', 'polling'], // Allow both but prefer websocket
     maxHttpBufferSize: 1e7 // 10 MB — uploads are chunked, but keep headroom per message
 });
 
-app.use(cors());
+app.use(cors({ origin: corsOriginCheck }));
 app.use(express.json());
 
-const PORT = 3001; // Backend port
+const PORT = Number(process.env.PORT) || 3001; // Backend port
 
 // --- API Routes ---
 
-// Get all servers
+// Get all servers.
+// Secrets (password, private key, passphrase, S3 secret) never leave the
+// backend: connections are made by server id and credentials are resolved
+// from the database server-side. The has_* flags let the edit UI show that
+// a secret is already saved.
 app.get("/api/servers", (req, res) => {
-    db.all("SELECT * FROM servers", [], (err, rows) => {
+    const sql = `SELECT
+            id, name, ip, type, username, port, ssh_port, os_detail,
+            s3_provider, s3_bucket, s3_region, s3_endpoint, s3_access_key,
+            command, cwd, initial_command, cli_preset,
+            (password IS NOT NULL AND password != '') AS has_password,
+            (privateKey IS NOT NULL AND privateKey != '') AS has_private_key,
+            (passphrase IS NOT NULL AND passphrase != '') AS has_passphrase,
+            (s3_secret_key IS NOT NULL AND s3_secret_key != '') AS has_s3_secret_key
+        FROM servers`;
+
+    db.all(sql, [], (err, rows) => {
         if (err) {
             res.status(400).json({ "error": err.message });
             return;
@@ -1048,7 +1307,7 @@ app.get("/api/servers", (req, res) => {
 
 // Add a new server
 app.post("/api/servers", (req, res) => {
-    console.log("POST /api/servers received body:", req.body);
+    console.log("POST /api/servers received body:", { ...req.body, password: "***", privateKey: "***", passphrase: "***", s3_secret_key: "***" });
     try {
         const { name, ip, type, username, password, port, ssh_port, s3_provider, s3_bucket, s3_region, s3_endpoint, s3_access_key, s3_secret_key, privateKey, passphrase, command, cwd, initial_command, cli_preset } = req.body;
         const sql = "INSERT INTO servers (name, ip, type, username, password, port, ssh_port, s3_provider, s3_bucket, s3_region, s3_endpoint, s3_access_key, s3_secret_key, privateKey, passphrase, command, cwd, initial_command, cli_preset) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)";
@@ -1075,8 +1334,6 @@ app.post("/api/servers", (req, res) => {
             cli_preset
         ];
 
-        console.log("Executing SQL:", sql, "Params:", params);
-
         db.run(sql, params, function (err) {
             if (err) {
                 console.error("Database Insert Error:", err.message);
@@ -1084,9 +1341,10 @@ app.post("/api/servers", (req, res) => {
                 return;
             }
             console.log("Server added with ID:", this.lastID);
+            const { password: _pw, privateKey: _pk, passphrase: _pp, s3_secret_key: _sk, ...publicFields } = req.body;
             res.json({
                 "message": "success",
-                "data": { id: this.lastID, ...req.body }
+                "data": { id: this.lastID, ...publicFields }
             });
         });
     } catch (e: any) {
@@ -1095,17 +1353,29 @@ app.post("/api/servers", (req, res) => {
     }
 });
 
-// Update an existing server
+// Update an existing server.
+// The edit form never receives saved secrets, so a blank/absent secret field
+// means "keep the stored value". Non-secret fields are overwritten as before.
 app.put("/api/servers/:id", (req, res) => {
-    console.log("PUT /api/servers/" + req.params.id, req.body);
+    console.log("PUT /api/servers/" + req.params.id, { ...req.body, password: "***", privateKey: "***", passphrase: "***", s3_secret_key: "***" });
     const { name, ip, type, username, password, port, os_detail, ssh_port, s3_provider, s3_bucket, s3_region, s3_endpoint, s3_access_key, s3_secret_key, privateKey, passphrase, command, cwd, initial_command, cli_preset } = req.body;
-    const sql = "UPDATE servers SET name = ?, ip = ?, type = ?, username = ?, password = ?, port = ?, os_detail = ?, ssh_port = ?, s3_provider = ?, s3_bucket = ?, s3_region = ?, s3_endpoint = ?, s3_access_key = ?, s3_secret_key = ?, privateKey = ?, passphrase = ?, command = ?, cwd = ?, initial_command = ?, cli_preset = ? WHERE id = ?";
+    const keepIfBlank = (value: any) => (typeof value === "string" && value.trim() !== "" ? value : null);
+    const sql = `UPDATE servers SET
+            name = ?, ip = ?, type = ?, username = ?,
+            password = COALESCE(?, password),
+            port = ?, os_detail = ?, ssh_port = ?,
+            s3_provider = ?, s3_bucket = ?, s3_region = ?, s3_endpoint = ?, s3_access_key = ?,
+            s3_secret_key = COALESCE(?, s3_secret_key),
+            privateKey = COALESCE(?, privateKey),
+            passphrase = COALESCE(?, passphrase),
+            command = ?, cwd = ?, initial_command = ?, cli_preset = ?
+        WHERE id = ?`;
     const params = [
         name,
         ip,
         type,
         username,
-        password,
+        keepIfBlank(password),
         port || (type === 'windows' ? 3389 : 22),
         os_detail,
         ssh_port || 22,
@@ -1114,9 +1384,9 @@ app.put("/api/servers/:id", (req, res) => {
         s3_region,
         s3_endpoint,
         s3_access_key,
-        s3_secret_key,
-        privateKey,
-        passphrase,
+        keepIfBlank(s3_secret_key),
+        keepIfBlank(privateKey),
+        keepIfBlank(passphrase),
         command,
         cwd,
         initial_command,
@@ -1273,13 +1543,110 @@ app.post("/api/config/model", (req, res) => {
     });
 });
 
-// Chat API Route
-app.post("/api/chat", async (req: any, res: any) => {
-    try {
-        const { message, context, model: requestedModel } = req.body;
+// --- Per-server chat history (so conversations survive reloads/switches) ---
 
-        if (isOutOfScopeAiRequest(message, context)) {
-            return res.json({ response: buildOutOfScopeResponse(message) });
+const MAX_PERSISTED_CHAT_MESSAGES = 100;
+
+app.get("/api/chat/history/:serverId", (req, res) => {
+    db.get("SELECT messages FROM chat_history WHERE server_id = ?", [String(req.params.serverId)], (err, row: any) => {
+        if (err) return res.status(500).json({ error: err.message });
+
+        let messages: any[] = [];
+        try {
+            messages = row?.messages ? JSON.parse(row.messages) : [];
+        } catch {
+            messages = [];
+        }
+
+        res.json({ messages: Array.isArray(messages) ? messages : [] });
+    });
+});
+
+app.put("/api/chat/history/:serverId", (req, res) => {
+    const incoming = Array.isArray(req.body?.messages) ? req.body.messages : null;
+    if (!incoming) return res.status(400).json({ error: "messages array is required" });
+
+    const messages = incoming
+        .filter((m: any) => (m?.role === "user" || m?.role === "assistant") && typeof m?.content === "string" && m.content.trim())
+        .slice(-MAX_PERSISTED_CHAT_MESSAGES)
+        .map((m: any) => ({ role: m.role, content: m.content }));
+
+    db.run(
+        "INSERT OR REPLACE INTO chat_history (server_id, messages, updated_at) VALUES (?, ?, ?)",
+        [String(req.params.serverId), JSON.stringify(messages), Date.now()],
+        (err) => {
+            if (err) return res.status(500).json({ error: err.message });
+            res.json({ message: "success", count: messages.length });
+        }
+    );
+});
+
+app.delete("/api/chat/history/:serverId", (req, res) => {
+    db.run("DELETE FROM chat_history WHERE server_id = ?", [String(req.params.serverId)], function (err) {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json({ message: "deleted", changes: this.changes });
+    });
+});
+
+// Chat API Route.
+// Default mode answers with a single JSON payload. With `stream: true` in the
+// body it answers as Server-Sent Events instead:
+//   {type:"model", model}        — a model attempt starts (fallbacks included)
+//   {type:"delta", text}         — incremental answer text
+//   {type:"done", usedModel, fullText} — canonical final text (post-fixups)
+//   {type:"error", message}
+// Closing the SSE connection aborts the upstream provider request.
+app.post("/api/chat", async (req: any, res: any) => {
+    const wantsStream = req.body?.stream === true;
+    const upstreamAbort = new AbortController();
+    let sseStarted = false;
+    let sseFinished = false;
+
+    const sseStart = () => {
+        if (sseStarted) return;
+        sseStarted = true;
+        res.writeHead(200, {
+            "Content-Type": "text/event-stream",
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no"
+        });
+        res.flushHeaders?.();
+        res.on("close", () => {
+            if (!sseFinished) upstreamAbort.abort();
+        });
+    };
+
+    const sseSend = (payload: object) => {
+        if (!sseStarted || res.writableEnded) return;
+        res.write(`data: ${JSON.stringify(payload)}\n\n`);
+    };
+
+    const sseEnd = () => {
+        sseFinished = true;
+        if (sseStarted && !res.writableEnded) res.end();
+    };
+
+    const replyCanned = (text: string) => {
+        if (wantsStream) {
+            sseStart();
+            sseSend({ type: "delta", text });
+            sseSend({ type: "done", usedModel: null, fullText: text });
+            sseEnd();
+            return;
+        }
+        res.json({ response: text });
+    };
+
+    try {
+        const { message, context, model: requestedModel, history } = req.body;
+        const chatHistory = sanitizeChatHistory(history);
+
+        // The keyword pre-filter is blunt (e.g. "code"/"api" trip it), so it
+        // only gates the first turn; ongoing conversations are governed by the
+        // scope rules in the system prompt.
+        if (chatHistory.length === 0 && isOutOfScopeAiRequest(message, context)) {
+            return replyCanned(buildOutOfScopeResponse(message));
         }
 
         // Determine Model
@@ -1294,9 +1661,7 @@ app.post("/api/chat", async (req: any, res: any) => {
         const isMiniMaxProxyMode = targetProvider === "minimax";
 
         if (targetProvider === "gemini" && !apiKey) {
-            return res.json({
-                response: `Please set your ${AI_PROVIDER_CONFIG[targetProvider].envKey} in Settings or Environment variables.`
-            });
+            return replyCanned(`Please set your ${AI_PROVIDER_CONFIG[targetProvider].envKey} in Settings or Environment variables.`);
         }
 
         console.log(`[Chat] Using ${AI_PROVIDER_CONFIG[targetProvider].label} model: ${targetModel}${isMiniMaxProxyMode ? ` via proxy ${MINIMAX_PROXY_BASE_URL}${ALLOW_CLIENT_MINIMAX_KEY && apiKey ? " with client key" : ""}` : ""}`);
@@ -1350,7 +1715,12 @@ app.post("/api/chat", async (req: any, res: any) => {
        - **EXAMPLE**: Portainer is installed via \`docker run\`, NOT \`apt install portainer\`.
        - **EXAMPLE**: If Docker is installed, use it to run containers instead of polluting the host OS.
 
-    7. **STRICT SCOPE LIMIT**:
+    7. **TERMINAL PROMPT & ENVIRONMENT AWARENESS (CRITICAL)**:
+       - Code blocks must contain ONLY the runnable command. NEVER include the terminal prompt inside a code block: no \`$\`, \`#\`, \`PS C:\\>\`, \`docker>\`, \`az>\`, \`kubectl>\`, etc. Prompts you see in the terminal output are NOT part of commands.
+       - Adapt every command to the EXACT environment described in the System Context.
+       - If the context says this is a SCOPED tool console (e.g. a "docker>" console), output ONLY that tool's subcommands: write \`ps -a\`, NOT \`docker ps -a\` and NOT \`docker> ps\`. The console prepends the tool name itself. Other programs, pipes and shell syntax are unavailable there.
+
+    8. **STRICT SCOPE LIMIT**:
        - You ONLY help with SysAdmin, server management, infrastructure automation, CI/CD, containers, networking, backups, monitoring, logging, security hardening, cloud/server deployments, and troubleshooting of server environments.
        - You MAY write Bash, PowerShell, Python, or other scripts ONLY when the script is directly related to server administration or DevOps operations.
        - You MUST REFUSE requests for general software development unrelated to server operations.
@@ -1375,13 +1745,22 @@ app.post("/api/chat", async (req: any, res: any) => {
        \`\`\`
     `;
 
-        const fullPrompt = `${SYSTEM_PROMPT}\n\n[System Context: ${context || 'None'}]\n\nUser Query: ${message}`;
+        const systemWithContext = `${SYSTEM_PROMPT}\n\n[System Context: ${context || 'None'}]`;
+
+        let streamedChars = 0;
+        const onDelta = wantsStream
+            ? (textDelta: string) => {
+                streamedChars += textDelta.length;
+                sseSend({ type: "delta", text: textDelta });
+            }
+            : undefined;
 
         const tryGenerate = async (modelName: string) => {
             console.log(`[Chat] Attempting with model: ${modelName}`);
+            if (wantsStream) sseSend({ type: "model", model: modelName });
 
             if (getProviderForModel(modelName) === "minimax") {
-                return callMiniMaxCompatibleAnthropicApi(apiKey, modelName, fullPrompt);
+                return callMiniMaxCompatibleAnthropicApi(apiKey, modelName, systemWithContext, chatHistory, message, onDelta, upstreamAbort.signal);
             }
 
             if (!genAI) {
@@ -1397,10 +1776,48 @@ app.post("/api/chat", async (req: any, res: any) => {
                     { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE },
                 ]
             });
-            const result = await model.generateContent(fullPrompt);
+
+            // Gemma models reject systemInstruction, so the system prompt rides as
+            // a synthetic opening exchange that works across the whole family.
+            const geminiTurns = chatHistory.map(turn => ({ ...turn }));
+            let outgoingMessage = message;
+            const lastTurn = geminiTurns[geminiTurns.length - 1];
+            if (lastTurn && lastTurn.role === "user") {
+                geminiTurns.pop();
+                outgoingMessage = `${lastTurn.content}\n\n${message}`;
+            }
+
+            const chat = model.startChat({
+                history: [
+                    { role: "user", parts: [{ text: systemWithContext }] },
+                    { role: "model", parts: [{ text: "Understood. I will follow these rules and the provided server context." }] },
+                    ...geminiTurns.map(turn => ({
+                        role: turn.role === "assistant" ? "model" : "user",
+                        parts: [{ text: turn.content }]
+                    }))
+                ]
+            });
+
+            if (onDelta) {
+                const result = await chat.sendMessageStream(outgoingMessage);
+                let fullText = "";
+                for await (const chunk of result.stream) {
+                    if (upstreamAbort.signal.aborted) break;
+                    const chunkText = chunk.text();
+                    if (chunkText) {
+                        fullText += chunkText;
+                        onDelta(chunkText);
+                    }
+                }
+                return fullText;
+            }
+
+            const result = await chat.sendMessage(outgoingMessage);
             const response = await result.response;
             return response.text();
         };
+
+        if (wantsStream) sseStart();
 
         let text: string;
         let usedModel = targetModel;
@@ -1408,6 +1825,11 @@ app.post("/api/chat", async (req: any, res: any) => {
         try {
             text = await tryGenerate(targetModel);
         } catch (err: any) {
+            if (upstreamAbort.signal.aborted) {
+                sseEnd();
+                return;
+            }
+
             console.error(`[Chat] Error with ${targetModel}:`, err.message);
 
             // Check for retryable errors (Quota, Overloaded, Timeout)
@@ -1415,7 +1837,9 @@ app.post("/api/chat", async (req: any, res: any) => {
 
             const fallbackModel = MODEL_FALLBACKS[targetModel];
 
-            if (isRetryable && fallbackModel) {
+            // Once text has been streamed to the client, switching models would
+            // duplicate the answer — surface the error instead.
+            if (isRetryable && fallbackModel && streamedChars === 0) {
                 console.log(`[Chat] ⚠️ Quota/Error limit reached. Auto-switching to fallback: ${fallbackModel}`);
                 usedModel = fallbackModel;
                 try {
@@ -1435,13 +1859,32 @@ app.post("/api/chat", async (req: any, res: any) => {
         // Fix 1: Replace "-Command" at start of lines with "powershell -Command"
         text = text.replace(/^-Command\s+/gm, 'powershell -Command ');
 
-        // Fix 2: If it generates "powershell -Command" inside a bash block, allow it, 
-        // but if it generates raw cmdlets without wrapper, we might miss them, 
+        // Fix 2: If it generates "powershell -Command" inside a bash block, allow it,
+        // but if it generates raw cmdlets without wrapper, we might miss them,
         // but the -Command pattern is the most frequent error.
+
+        if (wantsStream) {
+            sseSend({ type: "done", usedModel, fullText: text });
+            sseEnd();
+            return;
+        }
 
         res.json({ response: text, usedModel: usedModel });
     } catch (error: any) {
+        if (upstreamAbort.signal.aborted) {
+            sseEnd();
+            return;
+        }
+
         console.error("Error calling AI provider:", error);
+
+        if (wantsStream) {
+            sseStart();
+            sseSend({ type: "error", message: "Error processing your request: " + error.message });
+            sseEnd();
+            return;
+        }
+
         res.status(500).json({ response: "Error processing your request: " + error.message });
     }
 });
@@ -1494,6 +1937,30 @@ function encodeS3CopySource(bucket: string, key: string): string {
 }
 
 // Socket.io Handling
+// Connections are requested by server id; credentials are looked up here and
+// never travel through the client. The raw config fields act only as a
+// fallback for ad-hoc connections that were never saved.
+async function resolveConnectionConfig(config: any): Promise<any> {
+    if (config?.serverId == null) return config;
+
+    try {
+        const row = await getDbRow<any>("SELECT * FROM servers WHERE id = ?", [config.serverId]);
+        if (!row) return config;
+
+        return {
+            ...config,
+            password: row.password || undefined,
+            privateKey: row.privateKey || undefined,
+            passphrase: row.passphrase || undefined,
+            s3_access_key: row.s3_access_key || undefined,
+            s3_secret_key: row.s3_secret_key || undefined
+        };
+    } catch (err: any) {
+        console.error("Failed to resolve credentials for server", config.serverId, err?.message);
+        return config;
+    }
+}
+
 io.on("connection", (socket) => {
     console.log("Client connected", socket.id);
 
@@ -1568,7 +2035,8 @@ io.on("connection", (socket) => {
     };
 
     // --- SSH / FTP Connection Handling ---
-    socket.on("start-ssh", async (config) => {
+    socket.on("start-ssh", async (rawConfig) => {
+        const config = await resolveConnectionConfig(rawConfig);
         connectionError = null;
         console.log("Start Connection Config received:", {
             host: config.host,
@@ -2627,7 +3095,8 @@ io.on("connection", (socket) => {
     });
 
     // --- RDP Connection Handling ---
-    socket.on("start-rdp", (config) => {
+    socket.on("start-rdp", async (rawConfig) => {
+        const config = await resolveConnectionConfig(rawConfig);
         console.log("[RDP] Start connection:", { host: config.host, port: config.port, user: config.username });
 
         // Clean up previous RDP session
@@ -2748,7 +3217,8 @@ io.on("connection", (socket) => {
     });
 
     // --- Native RDP Launch (mstsc.exe) ---
-    socket.on("launch-rdp-native", async (config) => {
+    socket.on("launch-rdp-native", async (rawConfig) => {
+        const config = await resolveConnectionConfig(rawConfig);
         const { exec } = require('child_process');
         const host = config.host?.replace(/[\s\u00A0]+/g, '').trim();
         const port = config.port || 3389;

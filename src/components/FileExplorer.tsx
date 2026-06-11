@@ -133,10 +133,11 @@ export default function FileExplorer({ server, isVisible }: FileExplorerProps) {
                 ? (server.ssh_port || 22)
                 : (server.port || 22);
 
+            // Credentials (password / S3 secret) are resolved server-side
+            // from serverId; they never travel through the browser.
             newSocket.emit('start-ssh', {
                 host: server.ip,
                 username: server.username,
-                password: server.password,
                 type: server.type,
                 port: portToUse,
                 s3_provider: server.s3_provider,
@@ -144,7 +145,7 @@ export default function FileExplorer({ server, isVisible }: FileExplorerProps) {
                 s3_region: server.s3_region,
                 s3_endpoint: server.s3_endpoint,
                 s3_access_key: server.s3_access_key,
-                s3_secret_key: server.s3_secret_key
+                serverId: server.id
             });
         });
 

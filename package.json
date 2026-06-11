@@ -1,6 +1,6 @@
 {
   "name": "shellmind",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "ShellMind is a self-hosted remote workspace for terminal access, file management, remote desktop, and AI assistance.",
   "author": "Luisbh",
   "private": true,

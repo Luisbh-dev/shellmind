@@ -228,9 +228,9 @@ export default function RdpComponent({ server }: RdpProps) {
       socket.emit('launch-rdp-native', {
         host: server.ip,
         username: server.username,
-        password: server.password,
         port: server.port || 3389,
         domain: '',
+        serverId: server.id,
       });
     });
 
@@ -268,9 +268,9 @@ export default function RdpComponent({ server }: RdpProps) {
       socket.emit('start-rdp', {
         host: server.ip,
         username: server.username,
-        password: server.password,
         port: server.port || 3389,
         domain: '',
+        serverId: server.id,
         screenWidth: nextSize.width,
         screenHeight: nextSize.height
       });

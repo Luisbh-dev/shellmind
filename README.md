@@ -1,6 +1,6 @@
 # ShellMind
 
-> Version 0.3.0
+> Version 0.3.2
 
 ShellMind is a self-hosted remote workspace that combines terminal access, file management, remote desktop, and AI assistance in one focused interface.
 
@@ -9,6 +9,24 @@ It is designed for day-to-day server work across SSH, PowerShell, FTP, SFTP, and
 ## Screenshot
 
 ![ShellMind status dashboard and AI assistant](docs/screenshots/status-dashboard.png)
+
+## What is new in 0.3.2
+
+An AI and security release: the assistant finally has real conversation memory, answers stream in live, MiniMax M3 joins the model list, and connection credentials stop traveling through the browser.
+
+**AI assistant**
+- **MiniMax M3** is now available alongside M2.7, with automatic fallback to M2.7 on provider limits and a larger token budget for its reasoning.
+- **Real multi-turn context**: the assistant now receives the conversation history, so follow-up questions and corrections work naturally. The system prompt also rides in the proper `system` channel for MiniMax.
+- **Live streaming responses**: text appears as it is generated, and Stop now cancels the actual provider request instead of just hiding the answer.
+- **Conversations persist per server**: chat history survives reloads and server switches, and can be cleared from the chat header.
+- **Environment-aware commands**: in scoped CLI consoles (`docker>`, `az>`, …) the AI now emits bare subcommands (`ps -a`, never `docker ps -a` or `docker> ps`), and the console itself normalizes prompt artifacts in pasted or AI-run lines.
+- Auto-run now waits for the terminal to go quiet (up to 45 s) instead of a fixed 4 s, so long commands get their full output analyzed.
+- The off-topic keyword filter only applies to the first message of a conversation, removing false positives mid-chat.
+
+**Security**
+- Connection secrets (passwords, SSH private keys, passphrases, S3 secret keys) **never leave the backend** anymore: the frontend connects by server id and credentials are resolved server-side. `GET /api/servers` no longer returns secrets.
+- The HTTP API and the socket (including raw WebSocket upgrades) now enforce an **origin allowlist** (localhost + `ALLOWED_ORIGINS`), so arbitrary web pages can't read the API or drive connections from your browser.
+- Edit forms show "Saved — leave blank to keep" for stored secrets, and server logs no longer print credentials.
 
 ## What is new in 0.3.0
 
@@ -57,7 +75,10 @@ A major interface and usability overhaul focused on making ShellMind a tool you 
 
 ### AI Assistant
 - Chat with the active server in context.
-- Use Gemini or MiniMax models from the same assistant.
+- Use Gemini or MiniMax models (M2.7 and M3) from the same assistant.
+- The assistant remembers the current conversation: follow-up questions keep the full multi-turn context.
+- Responses stream in live, and Stop actually cancels the upstream provider request.
+- Conversations are saved per server and survive reloads and server switches; clear them anytime from the chat header.
 - Send terminal code blocks to the shell with one click.
 - Stop generation mid-stream, copy any answer, and re-generate the last response.
 - Enable Auto-Run for trusted command execution.
@@ -119,6 +140,8 @@ MINIMAX_API_KEY=your_optional_minimax_key_here
 
 For web deployments behind a custom origin, you can also set `VITE_API_BASE` at build time to point the frontend at your backend (defaults to `http://localhost:3001`).
 
+The backend only accepts browser requests from localhost (and requests without an Origin, e.g. the desktop app). If you host the web build behind a custom origin, allow it with `ALLOWED_ORIGINS=https://your-origin.example` (comma-separated). Saved connection secrets (passwords, private keys, S3 secret keys) never leave the backend: the frontend connects by server id and credentials are resolved server-side.
+
 You can also configure Gemini and MiniMax API keys from the app settings.
 If a key was saved in the app database instead of environment variables, you can update or delete it later from the settings modal.
 
@@ -141,6 +164,17 @@ For the public GitHub repository, do not commit provider API keys.
 For private desktop builds, prefer injecting secrets at build or runtime instead of hardcoding them in the repository. If the app will be distributed broadly, the safest approach is to route AI traffic through your own backend or proxy and keep the provider key only on infrastructure you control.
 
 ## Release notes
+
+### 0.3.2
+- MiniMax M3 enabled (Anthropic-compatible API) with automatic fallback to M2.7 and a larger reasoning token budget.
+- The AI assistant now receives the conversation history (multi-turn context) for both MiniMax and Gemini.
+- Chat responses stream live over SSE; Stop aborts the upstream provider request.
+- Conversations are persisted per server in SQLite and restorable across reloads; a clear-conversation button was added to the chat header.
+- Scoped CLI consoles: the AI generates bare subcommands for the active console, and `runLine` normalizes `tool>` prompts and repeated tool names in pasted input.
+- Auto-run waits for terminal quiescence (up to 45 s) instead of a fixed 4 s before analyzing output.
+- The out-of-scope keyword filter only gates the first turn of a conversation.
+- Security: `GET /api/servers` no longer returns secrets (has_* flags instead); connections resolve credentials server-side by server id; origin allowlist on HTTP + socket (`ALLOWED_ORIGINS` for custom web origins); secret-preserving edits ("leave blank to keep"); credential-free server logs.
+- The backend port can be overridden with the `PORT` env var.
 
 ### 0.3.1
 - Hotfix: large file uploads no longer stall. Uploads are now streamed in acked chunks (with a per-file progress bar / percentage) instead of a single oversized socket message.

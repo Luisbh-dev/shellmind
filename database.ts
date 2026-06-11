@@ -78,6 +78,13 @@ const db = new sqlite3.Database(dbPath, (err) => {
                 key TEXT PRIMARY KEY,
                 value TEXT
             )`);
+
+                // Per-server AI chat history (messages stored as a JSON array)
+                db.run(`CREATE TABLE IF NOT EXISTS chat_history (
+                server_id TEXT PRIMARY KEY,
+                messages TEXT NOT NULL,
+                updated_at INTEGER
+            )`);
             }
         });
     }

@@ -49,11 +49,13 @@ export default function AddServerModal({ isOpen, onClose, onAdd, initialData }: 
 
     useEffect(() => {
         if (initialData) {
+            // Saved secrets never reach the frontend; the backend only sends
+            // has_* flags. Blank secret fields on submit mean "keep saved".
             setFormData({
                 name: initialData.name || '',
                 ip: initialData.ip || '',
                 username: initialData.username || '',
-                password: initialData.password || '',
+                password: '',
                 port: initialData.port ? initialData.port.toString() : '',
                 ssh_port: initialData.ssh_port ? initialData.ssh_port.toString() : '',
                 s3_provider: initialData.s3_provider || 'aws',
@@ -61,16 +63,16 @@ export default function AddServerModal({ isOpen, onClose, onAdd, initialData }: 
                 s3_region: initialData.s3_region || 'us-east-1',
                 s3_endpoint: initialData.s3_endpoint || '',
                 s3_access_key: initialData.s3_access_key || '',
-                s3_secret_key: initialData.s3_secret_key || '',
-                privateKey: initialData.privateKey || '',
-                passphrase: initialData.passphrase || '',
+                s3_secret_key: '',
+                privateKey: '',
+                passphrase: '',
                 command: initialData.command || '',
                 cwd: initialData.cwd || '',
                 initial_command: initialData.initial_command || '',
                 cli_preset: initialData.cli_preset || 'shell'
             });
             setType(initialData.type || 'linux');
-            setAuthMethod(initialData.privateKey ? 'key' : 'password');
+            setAuthMethod(initialData.has_private_key ? 'key' : 'password');
         } else {
             setFormData(EMPTY_FORM);
             setType('linux');
@@ -266,11 +268,19 @@ export default function AddServerModal({ isOpen, onClose, onAdd, initialData }: 
                             </Field>
                             {authMethod === 'password' ? (
                                 <Field label="Password">
-                                    <PasswordInput value={formData.password} onChange={(e) => set({ password: e.target.value })} placeholder="••••••" />
+                                    <PasswordInput
+                                        value={formData.password}
+                                        onChange={(e) => set({ password: e.target.value })}
+                                        placeholder={initialData?.has_password ? 'Saved — leave blank to keep' : '••••••'}
+                                    />
                                 </Field>
                             ) : (
                                 <Field label="Passphrase (optional)">
-                                    <PasswordInput value={formData.passphrase} onChange={(e) => set({ passphrase: e.target.value })} placeholder="Key passphrase" />
+                                    <PasswordInput
+                                        value={formData.passphrase}
+                                        onChange={(e) => set({ passphrase: e.target.value })}
+                                        placeholder={initialData?.has_passphrase ? 'Saved — leave blank to keep' : 'Key passphrase'}
+                                    />
                                 </Field>
                             )}
                         </div>
@@ -280,7 +290,7 @@ export default function AddServerModal({ isOpen, onClose, onAdd, initialData }: 
                                 <Textarea
                                     value={formData.privateKey}
                                     onChange={(e) => set({ privateKey: e.target.value })}
-                                    placeholder="-----BEGIN OPENSSH PRIVATE KEY-----..."
+                                    placeholder={initialData?.has_private_key ? 'Saved — leave blank to keep the stored key' : '-----BEGIN OPENSSH PRIVATE KEY-----...'}
                                     rows={5}
                                     className="font-mono text-xs"
                                 />
@@ -324,7 +334,12 @@ export default function AddServerModal({ isOpen, onClose, onAdd, initialData }: 
                                 <Input required value={formData.s3_access_key} onChange={(e) => set({ s3_access_key: e.target.value })} placeholder="AKIA..." />
                             </Field>
                             <Field label="Secret key">
-                                <PasswordInput value={formData.s3_secret_key} onChange={(e) => set({ s3_secret_key: e.target.value })} placeholder="••••••" required />
+                                <PasswordInput
+                                    value={formData.s3_secret_key}
+                                    onChange={(e) => set({ s3_secret_key: e.target.value })}
+                                    placeholder={initialData?.has_s3_secret_key ? 'Saved — leave blank to keep' : '••••••'}
+                                    required={!initialData?.has_s3_secret_key}
+                                />
                             </Field>
                         </div>
                     </div>

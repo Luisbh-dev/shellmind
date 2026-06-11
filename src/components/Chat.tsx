@@ -3,12 +3,12 @@
 import { useEffect, useRef, useState } from "react";
 import {
     Send, Bot, Sparkles, Play, Zap, Terminal, AlertTriangle, Star, X, Square,
-    Copy, RefreshCw, Check, User
+    Copy, RefreshCw, Check, User, Trash2
 } from "lucide-react";
 import { cn } from "@/lib/cn";
 import ReactMarkdown from "react-markdown";
 import { useToast } from "@/components/ui/Toast";
-import { type ConnState, Select } from "@/components/ui";
+import { type ConnState, Select, useConfirm } from "@/components/ui";
 import { API_BASE } from "@/config";
 
 interface Message {
@@ -56,16 +56,32 @@ const CLI_PRESET_LABELS: Record<string, string> = {
     custom: "a custom local command"
 };
 
+// Binary behind each scoped preset (the "<bin>>" prompt of the console).
+const CLI_PRESET_BINS: Record<string, string> = {
+    azure: "az",
+    aws: "aws",
+    gcloud: "gcloud",
+    kubectl: "kubectl",
+    docker: "docker"
+};
+
+const getScopedBin = (server: any): string | null =>
+    server?.type === "local" ? CLI_PRESET_BINS[server.cli_preset] || null : null;
+
 // Human/AI-readable description of the active connection, used as chat context.
 const describeServer = (server: any) => {
     if (!server) return "No active server connection.";
     if (server.type === "local") {
         const preset = server.cli_preset || "shell";
         const focus = CLI_PRESET_LABELS[preset] || "the local shell";
-        const scoped = !["shell", "custom"].includes(preset);
+        const bin = getScopedBin(server);
         const detected = server.osDetail ? ` Detected environment: ${server.osDetail}.` : "";
-        if (scoped) {
-            return `This is a LOCAL, SCOPED ${focus} console on the user's own machine: it only runs that tool's subcommands (a "<tool>>" prompt), not a full shell. Provide ${focus} commands; including the leading tool name is fine (it's stripped automatically). Assume the tool is installed and authenticated locally.${detected} The terminal output below is from this console.`;
+        if (bin) {
+            return `This is a LOCAL, SCOPED ${focus} console on the user's own machine: it only runs ${bin} subcommands (a "${bin}>" prompt), not a full shell. ` +
+                `CRITICAL COMMAND FORMAT: in code blocks, output ONLY the subcommand with its arguments — WITHOUT the leading "${bin}" and WITHOUT the "${bin}>" prompt. ` +
+                `Correct: \`ps -a\`. Incorrect: \`${bin} ps -a\` or \`${bin}> ps\`. ` +
+                `Pipes, redirections and other programs are NOT available in this console. ` +
+                `Assume the tool is installed and authenticated locally.${detected} The terminal output below is from this console (the "${bin}>" you see there is the prompt, never part of a command).`;
         }
         return `This is a LOCAL shell session named "${server.name}" on the user's own machine (PowerShell on Windows, bash/zsh on macOS/Linux). Provide shell-appropriate commands and assume local tools are installed.${detected} The terminal output below comes from this shell.`;
     }
@@ -74,6 +90,7 @@ const describeServer = (server: any) => {
 
 const MODEL_OPTIONS = [
     { value: "MiniMax-M2.7", label: "MiniMax M2.7" },
+    { value: "MiniMax-M3", label: "MiniMax M3" },
     { value: "gemini-2.5-flash", label: "Flash 2.5 (Smart)" },
     { value: "gemini-3-flash-preview", label: "Flash 3 (Smartest)" },
     { value: "gemma-3-27b-it", label: "Gemma 3 (Standard)" }
@@ -81,6 +98,21 @@ const MODEL_OPTIONS = [
 const HIDDEN_MODEL_LABELS: Record<string, string> = {
     "MiniMax-M2.7-highspeed": "MiniMax M2.7 Highspeed"
 };
+
+// UI-only notices (greetings, OS banners, fallback warnings) that must not
+// reach the AI as conversation history.
+const SYNTHETIC_MESSAGE_ID_PREFIXES = ["init-", "os-info-", "sys-switch-", "autorun-cap-"];
+const isSyntheticMessage = (msg: Message) =>
+    msg.id === "1" || SYNTHETIC_MESSAGE_ID_PREFIXES.some(prefix => msg.id.startsWith(prefix));
+
+const MAX_HISTORY_MESSAGES = 12;
+
+// Prior conversation turns (excluding the message being sent) for the AI.
+const buildChatHistory = (priorMessages: Message[]) =>
+    priorMessages
+        .filter(msg => !isSyntheticMessage(msg))
+        .slice(-MAX_HISTORY_MESSAGES)
+        .map(msg => ({ role: msg.role, content: msg.content }));
 
 const DIAGNOSTIC_PROMPT = "Analyze the latest SSH terminal failure and give me the exact command to fix it.";
 
@@ -167,6 +199,7 @@ export default function Chat({
     const autoRunTimerRef = useRef<number | null>(null);
     const autoRunStepsRef = useRef(0);
     const toast = useToast();
+    const confirmDialog = useConfirm();
 
     const AUTO_RUN_MAX_STEPS = 5;
 
@@ -232,6 +265,11 @@ export default function Chat({
     const initMessageId = "init-" + (activeServer?.id || "default");
 
     useEffect(() => {
+        // Abort any in-flight generation from the previous server so its
+        // response can't land in the new conversation.
+        abortRef.current?.abort();
+        setIsLoading(false);
+
         setMessages([
             {
                 id: initMessageId,
@@ -240,8 +278,67 @@ export default function Chat({
             }
         ]);
         setFixItSuggestion("");
+
+        // Restore the saved conversation for this server (if any).
+        const serverId = activeServer?.id;
+        if (serverId == null) return;
+
+        let cancelled = false;
+        fetch(`${API_BASE}/api/chat/history/${serverId}`)
+            .then(res => res.json())
+            .then(data => {
+                if (cancelled || !Array.isArray(data?.messages) || data.messages.length === 0) return;
+                const restored: Message[] = data.messages
+                    .filter((m: any) => (m?.role === "user" || m?.role === "assistant") && typeof m?.content === "string")
+                    .map((m: any, i: number) => ({ id: `hist-${serverId}-${i}`, role: m.role, content: m.content }));
+                if (!restored.length) return;
+                setMessages(prev => [...prev.filter(m => m.id === initMessageId), ...restored]);
+            })
+            .catch(() => { /* offline backend: start fresh */ });
+
+        return () => { cancelled = true; };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [activeServer?.id]);
+
+    // Persist the real conversation (greetings/notices excluded) per server.
+    const persistTimerRef = useRef<number | null>(null);
+    useEffect(() => {
+        const serverId = activeServer?.id;
+        if (serverId == null) return;
+
+        const real = messages.filter(m => !isSyntheticMessage(m));
+        // An empty list here usually means "freshly reset", not "user cleared
+        // it" — explicit clearing goes through the DELETE endpoint instead.
+        if (real.length === 0) return;
+
+        if (persistTimerRef.current) window.clearTimeout(persistTimerRef.current);
+        persistTimerRef.current = window.setTimeout(() => {
+            fetch(`${API_BASE}/api/chat/history/${serverId}`, {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ messages: real.map(({ role, content }) => ({ role, content })) })
+            }).catch(() => { /* best-effort */ });
+        }, 600);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [messages, activeServer?.id]);
+
+    const clearConversation = async () => {
+        const ok = await confirmDialog({
+            title: "Clear conversation",
+            message: "Delete the saved chat history for this server? The AI will lose this conversation's context.",
+            confirmLabel: "Clear",
+            tone: "danger"
+        });
+        if (!ok) return;
+
+        stopGeneration();
+        setMessages([{ id: initMessageId, role: "assistant", content: greetingFor(activeServer, connectionState) }]);
+        setFixItSuggestion("");
+
+        if (activeServer?.id != null) {
+            fetch(`${API_BASE}/api/chat/history/${activeServer.id}`, { method: "DELETE" }).catch(() => { /* best-effort */ });
+        }
+    };
 
     // Keep the greeting in sync with the real connection state (without
     // touching any messages the user has already exchanged).
@@ -298,8 +395,18 @@ export default function Chat({
     }, []);
 
     const runCommand = (cmd: string) => {
+        const scopedBin = getScopedBin(activeServer);
+
         const lines = cmd.split("\n")
-            .map(line => line.trim())
+            .map(line => {
+                // Strip prompt artifacts the AI may copy from terminal output:
+                // "$ cmd" in shells, "docker> ps" in scoped consoles.
+                let clean = line.trim().replace(/^\$\s+/, "");
+                if (scopedBin) {
+                    clean = clean.replace(new RegExp(`^(?:${scopedBin}>\\s*)+`, "i"), "").trim();
+                }
+                return clean;
+            })
             .filter(line => line && !line.startsWith("#"));
 
         let cleanCmd = "";
@@ -402,6 +509,14 @@ export default function Chat({
         void processAiInteraction(history);
     };
 
+    // Last 50 real lines (capped) so the context matches the label the model sees.
+    const buildTerminalContext = () => {
+        const raw = terminalHistory?.current;
+        if (!raw?.trim()) return "";
+        const lastLines = raw.split("\n").slice(-50).join("\n").slice(-6000);
+        return `\n\n[LAST 50 LINES OF TERMINAL OUTPUT]\n${lastLines}`;
+    };
+
     const requestFixIt = async () => {
         if (!latestIssue) return;
 
@@ -415,9 +530,7 @@ export default function Chat({
         abortRef.current = controller;
 
         try {
-            const historyContext = terminalHistory?.current
-                ? `\n\n[LAST 50 LINES OF TERMINAL OUTPUT]\n${terminalHistory.current.slice(-3000)}`
-                : "";
+            const historyContext = buildTerminalContext();
 
             const issueContext = terminalIssues?.length
                 ? `\n\n[RECENT SSH FAILURES]\n${terminalIssues.slice(-8).map(formatIssueEntry).join("\n")}`
@@ -432,7 +545,8 @@ export default function Chat({
                 body: JSON.stringify({
                     message: "Return only the exact command that fixes this SSH error. If there are multiple commands, choose the safest single command first. No explanation, no bullets, only the command or a code block.",
                     context,
-                    model: selectedModel
+                    model: selectedModel,
+                    history: buildChatHistory(messages)
                 })
             });
 
@@ -457,10 +571,28 @@ export default function Chat({
         abortRef.current?.abort();
         const controller = new AbortController();
         abortRef.current = controller;
+
+        const assistantId = "ai-" + Date.now();
+        const upsertAssistant = (content: string) => {
+            setMessages(prev => prev.some(m => m.id === assistantId)
+                ? prev.map(m => (m.id === assistantId ? { ...m, content } : m))
+                : [...prev, { id: assistantId, role: "assistant" as const, content }]);
+        };
+
+        const warnModelSwitch = (usedModel: string) => {
+            const normalizedUsedModel = normalizeSelectableModel(usedModel);
+            if (normalizedUsedModel !== selectedModel) {
+                setSelectedModel(normalizedUsedModel);
+            }
+            setMessages(prev => [...prev, {
+                id: "sys-switch-" + Date.now(),
+                role: "assistant",
+                content: `WARNING: Automatically switched to **${getModelLabel(usedModel)}** due to provider limits.`
+            }]);
+        };
+
         try {
-            const historyContext = terminalHistory?.current
-                ? `\n\n[LAST 50 LINES OF TERMINAL OUTPUT]\n${terminalHistory.current.slice(-3000)}`
-                : "";
+            const historyContext = buildTerminalContext();
 
             const terminalIssueContext = terminalIssues?.length
                 ? `\n\n[RECENT SSH FAILURES]\n${terminalIssues.slice(-8).map(formatIssueEntry).join("\n")}`
@@ -477,35 +609,93 @@ export default function Chat({
                 body: JSON.stringify({
                     message: lastMsg.content,
                     context: context,
-                    model: selectedModel
+                    model: selectedModel,
+                    history: buildChatHistory(conversationHistory.slice(0, -1)),
+                    stream: true
                 }),
             });
 
-            const data = await res.json();
-            const responseContent = data.response || "Sorry, I couldn't process that.";
+            let responseContent = "";
+            const contentType = res.headers.get("content-type") || "";
 
-            if (data.usedModel && data.usedModel !== selectedModel) {
-                const normalizedUsedModel = normalizeSelectableModel(data.usedModel);
-                if (normalizedUsedModel !== selectedModel) {
-                    setSelectedModel(normalizedUsedModel);
+            if (contentType.includes("text/event-stream") && res.body) {
+                // SSE: render deltas live; "done" carries the canonical full text.
+                const reader = res.body.getReader();
+                const decoder = new TextDecoder();
+                let buffer = "";
+                let accumulated = "";
+                let finalText: string | null = null;
+                let firstModel: string | null = null;
+                let streamError: string | null = null;
+
+                const handleEvent = (event: any) => {
+                    if (event?.type === "delta" && event.text) {
+                        accumulated += event.text;
+                        upsertAssistant(accumulated);
+                    } else if (event?.type === "model" && typeof event.model === "string") {
+                        // First event is the requested model; a second one means
+                        // the backend fell back to another model.
+                        if (firstModel === null) firstModel = event.model;
+                        else if (event.model !== firstModel) warnModelSwitch(event.model);
+                    } else if (event?.type === "done") {
+                        finalText = typeof event.fullText === "string" && event.fullText ? event.fullText : null;
+                    } else if (event?.type === "error") {
+                        streamError = event.message || "AI error";
+                    }
+                };
+
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+                    if (value) buffer += decoder.decode(value, { stream: true });
+
+                    let separator;
+                    while ((separator = buffer.indexOf("\n\n")) !== -1) {
+                        const rawEvent = buffer.slice(0, separator);
+                        buffer = buffer.slice(separator + 2);
+                        for (const line of rawEvent.split("\n")) {
+                            if (!line.startsWith("data:")) continue;
+                            try {
+                                handleEvent(JSON.parse(line.slice(5).trim()));
+                            } catch { /* ignore malformed SSE lines */ }
+                        }
+                    }
                 }
-                setMessages(prev => [...prev, {
-                    id: "sys-switch-" + Date.now(),
-                    role: "assistant",
-                    content: `WARNING: Automatically switched to **${getModelLabel(data.usedModel)}** due to provider limits.`
-                }]);
+
+                if (streamError) {
+                    if (accumulated) {
+                        setMessages(prev => [...prev, { id: "err-" + Date.now(), role: "assistant", content: `⚠️ ${streamError}` }]);
+                    } else {
+                        upsertAssistant(`⚠️ ${streamError}`);
+                    }
+                    setIsLoading(false);
+                    return;
+                }
+
+                responseContent = finalText ?? accumulated;
+                if (!responseContent.trim()) responseContent = "Sorry, I couldn't process that.";
+                upsertAssistant(responseContent);
+            } else {
+                // Plain JSON answer (older backend or a proxy that buffers SSE).
+                const data = await res.json();
+                responseContent = data.response || "Sorry, I couldn't process that.";
+
+                if (data.usedModel && data.usedModel !== selectedModel) {
+                    warnModelSwitch(data.usedModel);
+                }
+
+                upsertAssistant(responseContent);
             }
 
-            const aiMessage: Message = {
-                id: (Date.now() + 1).toString(),
-                role: "assistant",
-                content: responseContent,
-            };
-
-            setMessages(prev => [...prev, aiMessage]);
+            const aiMessage: Message = { id: assistantId, role: "assistant", content: responseContent };
 
             if (isAutoRun) {
-                const codeMatches = [...responseContent.matchAll(/```(\w*)\n?([\s\S]*?)```/g)];
+                const codeBlockRegex = /```(\w*)\n?([\s\S]*?)```/g;
+                const codeMatches: RegExpExecArray[] = [];
+                let blockMatch: RegExpExecArray | null;
+                while ((blockMatch = codeBlockRegex.exec(responseContent)) !== null) {
+                    codeMatches.push(blockMatch);
+                }
 
                 if (codeMatches.length > 0 && autoRunStepsRef.current >= AUTO_RUN_MAX_STEPS) {
                     setMessages(prev => [...prev, {
@@ -522,8 +712,15 @@ export default function Chat({
                     runCommand(fullScript);
                     setIsLoading(true);
 
-                    autoRunTimerRef.current = window.setTimeout(() => {
-                        autoRunTimerRef.current = null;
+                    // Wait for the terminal to go quiet instead of a fixed 4s,
+                    // so long-running commands get their full output analyzed.
+                    const POLL_MS = 1500;
+                    const MAX_WAIT_MS = 45000;
+                    const NO_OUTPUT_GIVE_UP_MS = 6000;
+                    let waited = 0;
+                    let lastLength = startLength;
+
+                    const finalizeAutoRun = () => {
                         const newOutput = terminalHistory?.current?.substring(startLength) || "";
 
                         if (newOutput.trim().length > 0) {
@@ -537,7 +734,26 @@ export default function Chat({
                         } else {
                             setIsLoading(false);
                         }
-                    }, 4000);
+                    };
+
+                    const poll = () => {
+                        autoRunTimerRef.current = window.setTimeout(() => {
+                            autoRunTimerRef.current = null;
+                            waited += POLL_MS;
+                            const currentLength = terminalHistory?.current?.length || 0;
+                            const stillGrowing = currentLength > lastLength;
+                            const hasOutput = currentLength > startLength;
+                            lastLength = currentLength;
+
+                            if (waited < MAX_WAIT_MS && (stillGrowing || (!hasOutput && waited < NO_OUTPUT_GIVE_UP_MS))) {
+                                poll();
+                                return;
+                            }
+
+                            finalizeAutoRun();
+                        }, POLL_MS);
+                    };
+                    poll();
                 } else {
                     setIsLoading(false);
                 }
@@ -547,6 +763,7 @@ export default function Chat({
 
         } catch (error: any) {
             if (error?.name === "AbortError") {
+                // Partial streamed text (if any) stays visible.
                 setIsLoading(false);
                 return;
             }
@@ -593,6 +810,14 @@ export default function Chat({
                     <Sparkles className="w-3.5 h-3.5 text-brand-400" />
                     <span className="font-bold text-xs text-zinc-200 uppercase tracking-wider">AI Assistant</span>
                 </div>
+                <button
+                    onClick={clearConversation}
+                    className="rounded-lg p-1.5 text-zinc-500 hover:bg-white/5 hover:text-zinc-200 transition-colors"
+                    title="Clear conversation (forgets context)"
+                    style={{ WebkitAppRegion: "no-drag" } as any}
+                >
+                    <Trash2 className="w-3.5 h-3.5" />
+                </button>
             </div>
 
             <div className="px-3 py-2 border-b border-white/5 bg-ink-900/50 flex items-center justify-between gap-3 shrink-0" style={{ WebkitAppRegion: "no-drag" } as any}>
