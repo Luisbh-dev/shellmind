@@ -1,7 +1,8 @@
-import { createContext, useCallback, useContext, useRef, useState } from "react";
+import { createContext, useCallback, useContext, useId, useRef, useState } from "react";
 import { AlertTriangle } from "lucide-react";
 import { Modal } from "./Modal";
 import { Button } from "./Button";
+import { t as translate, useT } from "@/i18n";
 
 interface ConfirmOptions {
     title: string;
@@ -13,51 +14,62 @@ interface ConfirmOptions {
 
 type ConfirmFn = (options: ConfirmOptions) => Promise<boolean>;
 
+type Request = { id: number; options: ConfirmOptions; resolve: (value: boolean) => void };
+
 const ConfirmContext = createContext<ConfirmFn | null>(null);
 
+// Confirmations are queued: a second request waits for the first answer
+// instead of replacing it (and leaving its promise unresolved).
 export function ConfirmProvider({ children }: { children: React.ReactNode }) {
-    const [options, setOptions] = useState<ConfirmOptions | null>(null);
-    const resolverRef = useRef<((value: boolean) => void) | null>(null);
+    const [queue, setQueue] = useState<Request[]>([]);
+    const nextId = useRef(1);
+    const messageId = useId();
+    const t = useT();
+    const current = queue[0];
+    const options = current?.options;
+    const danger = options?.tone === "danger";
 
-    const confirm = useCallback<ConfirmFn>((opts) => {
-        setOptions(opts);
-        return new Promise<boolean>((resolve) => {
-            resolverRef.current = resolve;
-        });
-    }, []);
+    const confirm = useCallback<ConfirmFn>((opts) => new Promise<boolean>((resolve) => {
+        const id = nextId.current++;
+        setQueue((pending) => [...pending, { id, options: opts, resolve }]);
+    }), []);
 
     const settle = (value: boolean) => {
-        resolverRef.current?.(value);
-        resolverRef.current = null;
-        setOptions(null);
+        current?.resolve(value);
+        setQueue((pending) => pending.slice(1));
     };
 
+    // A fresh dialog (and initial focus) for every request. A destructive
+    // action is never one Enter away: Cancel has the initial focus then.
     return (
         <ConfirmContext.Provider value={confirm}>
             {children}
             <Modal
-                open={!!options}
+                key={current?.id ?? 0}
+                open={Boolean(current)}
                 onClose={() => settle(false)}
                 title={options?.title}
-                icon={options?.tone === "danger" ? <AlertTriangle className="w-4 h-4" /> : undefined}
+                role="alertdialog"
+                ariaDescribedBy={options?.message ? messageId : undefined}
+                icon={danger ? <AlertTriangle className="w-4 h-4 text-rose-400" /> : undefined}
                 widthClass="max-w-sm"
                 footer={
                     <>
-                        <Button variant="ghost" size="sm" onClick={() => settle(false)}>
-                            {options?.cancelLabel || "Cancel"}
+                        <Button variant="ghost" size="sm" onClick={() => settle(false)} data-autofocus={danger ? true : undefined}>
+                            {options?.cancelLabel || t("common.cancel")}
                         </Button>
                         <Button
-                            variant={options?.tone === "danger" ? "danger" : "primary"}
+                            variant={danger ? "danger" : "primary"}
                             size="sm"
                             onClick={() => settle(true)}
-                            autoFocus
+                            data-autofocus={danger ? undefined : true}
                         >
-                            {options?.confirmLabel || "Confirm"}
+                            {options?.confirmLabel || t("common.confirm")}
                         </Button>
                     </>
                 }
             >
-                <div className="text-sm text-zinc-400 leading-relaxed">{options?.message}</div>
+                <div id={messageId} className="text-sm text-zinc-300 leading-relaxed break-words">{options?.message}</div>
             </Modal>
         </ConfirmContext.Provider>
     );
@@ -66,7 +78,7 @@ export function ConfirmProvider({ children }: { children: React.ReactNode }) {
 export function useConfirm(): ConfirmFn {
     const ctx = useContext(ConfirmContext);
     if (!ctx) {
-        return async () => window.confirm("Are you sure?");
+        return async () => window.confirm(translate("common.areYouSure"));
     }
     return ctx;
 }

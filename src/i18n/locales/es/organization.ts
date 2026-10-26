@@ -1,0 +1,101 @@
+import type en from '../en/organization';
+
+const es: typeof en = {
+    colors: {
+        none: 'Sin color',
+        teal: 'Turquesa',
+        sky: 'Azul',
+        violet: 'Violeta',
+        rose: 'Rojo',
+        amber: 'Ámbar',
+        emerald: 'Verde',
+        orange: 'Naranja'
+    },
+    sshImport: {
+        title: 'Importar desde la configuración SSH',
+        description: 'Crea conexiones a partir de las entradas Host de una configuración de cliente OpenSSH.',
+        sourceLabel: 'De dónde leer la configuración',
+        sourceFile: '~/.ssh/config de este equipo',
+        sourcePaste: 'Pegar el texto',
+        fileHint: 'ShellMind lee ~/.ssh/config (y los archivos que incluye desde ~/.ssh) del usuario que ejecuta el backend de ShellMind. No se guarda nada hasta que confirmes.',
+        pasteLabel: 'Configuración SSH',
+        pasteHint: 'Las líneas Include no se pueden seguir en texto pegado.',
+        preview: 'Vista previa',
+        back: 'Atrás',
+        done: 'Hecho',
+        importCount: 'Importar {count}',
+        readFrom: 'Leído de',
+        hostsOne: 'Se encontró 1 host',
+        hostsMany: 'Se encontraron {count} hosts',
+        noHosts: 'No se encontró ningún host (los patrones con comodines, como Host *, no son hosts).',
+        selectAll: 'Seleccionar todo',
+        selectNone: 'No seleccionar ninguno',
+        alreadySaved: 'Ya guardado como {name}',
+        via: 'a través de {jump}',
+        viaSaved: 'a través de {jump} (guardado como {name})',
+        jumpNotSelected: 'Su host de salto {jump} no está seleccionado: selecciónalo también o este host se omitirá.',
+        group: 'Grupo',
+        groupHint: 'Las conexiones importadas van a este grupo. Déjalo vacío para no usar ninguno.',
+        defaultGroup: 'Configuración SSH',
+        working: 'Procesando…',
+        failed: 'La importación ha fallado.',
+        resultSummary: 'Creadas: {created}. Omitidas: {skipped}.',
+        warnings: {
+            'include-unresolved': 'No se leyó Include {detail} (solo se leen archivos dentro de ~/.ssh).',
+            'include-in-text': 'Se ignoró Include {detail}: el texto pegado no puede incluir archivos.',
+            'match-ignored': 'Los bloques Match no se evalúan.',
+            'proxy-command': 'ProxyCommand no está soportado (ProxyJump sí).',
+            'proxy-jump-chain': 'ProxyJump {detail} tiene varios saltos: solo se usa el último.',
+            'proxy-jump-unknown': 'El host de salto {detail} no está en este archivo ni guardado.',
+            'identity-multiple': 'Hay varias líneas IdentityFile: se usa {detail}.',
+            'unsupported-token': 'No se puede expandir el token {detail}.',
+            'invalid-port': 'Puerto {detail} no válido: se usa el predeterminado.',
+            'user-default': 'Sin User: se usa {detail} (el usuario local).'
+        }
+    },
+    report: {
+        created: { one: 'Se creó 1:', many: 'Se crearon {count}:' },
+        skipped: { one: 'Se omitió 1:', many: 'Se omitieron {count}:' },
+        willCreate: { one: 'Se añadirá 1:', many: 'Se añadirán {count}:' },
+        willSkip: { one: 'Se omitirá 1:', many: 'Se omitirán {count}:' },
+        reasons: {
+            duplicate: 'ya existe',
+            invalid: 'datos no válidos',
+            'jump-missing': 'falta su host de salto',
+            'server-missing': 'su servidor no se importó',
+            'unsupported-server': 'su servidor ({detail}) no usa SSH, así que no puede tener túneles'
+        }
+    },
+    transfer: {
+        exportHeading: 'Exportar',
+        exportHint: 'Guarda tus conexiones, snippets y túneles en un archivo JSON. Nunca incluye contraseñas, claves privadas ni otros secretos; de S3 incluye el ID de la clave de acceso, pero no la clave secreta.',
+        export: 'Exportar la configuración',
+        exportedOne: 'Configuración exportada (1 conexión)',
+        exportedMany: 'Configuración exportada ({count} conexiones)',
+        exportFailed: 'No se pudo exportar la configuración',
+        importHeading: 'Importar',
+        importHint: 'Añade las conexiones, snippets y túneles de un archivo exportado, después de que los revises. Las conexiones que ya existen (mismo nombre y host) se omiten; los secretos hay que volver a introducirlos.',
+        import: 'Importar un archivo…',
+        sshConfig: 'Importar desde ~/.ssh/config',
+        notJson: 'Ese archivo no es un JSON válido.',
+        importFailed: 'La importación ha fallado.',
+        nothing: 'El archivo no tiene nada que importar.',
+        nothingNew: 'No hay nada nuevo que importar: todo lo de este archivo ya está aquí.',
+        reviewHeading: 'Revisa «{file}»',
+        reviewHint: 'Todavía no se ha guardado nada. Comprueba lo que añade este archivo y luego impórtalo.',
+        consolesWarning: 'Estas consolas locales ejecutan comandos en este equipo cuando las abres. Impórtalas solo si confías en la procedencia del archivo.',
+        consoleCommand: 'Ejecuta',
+        consoleInitialCommand: 'Después escribe',
+        consoleCwd: 'En la carpeta',
+        trustCommands: 'He revisado estos comandos y confío en ellos',
+        tunnelsNote: 'Los túneles se añaden detenidos y solo escuchan en este equipo (loopback):',
+        tunnelLine: '{name} a través de {server}: {local} → {remote}',
+        confirmImport: 'Importar',
+        imported: 'Importación terminada.',
+        servers: 'Conexiones',
+        snippets: 'Snippets',
+        tunnels: 'Túneles'
+    }
+};
+
+export default es;

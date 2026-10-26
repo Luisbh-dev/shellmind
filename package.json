@@ -1,37 +1,105 @@
 {
   "name": "shellmind",
-  "version": "0.3.3",
-  "description": "ShellMind is a self-hosted remote workspace for terminal access, file management, remote desktop, and AI assistance.",
+  "version": "1.0.0",
+  "description": "The self-hosted workspace for sysadmins and DevOps: SSH terminals, files, operations, fleet health, Remote Desktop and an AI assistant.",
   "author": "Luisbh",
+  "license": "MIT",
+  "homepage": "https://github.com/Luisbh-dev/shellmind",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Luisbh-dev/shellmind.git"
+  },
+  "desktopName": "shellmind.desktop",
   "private": true,
   "main": "dist-electron/main.js",
+  "engines": {
+    "node": "^22.22.2 || ^24.15.0 || >=26"
+  },
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
-    "build:server": "tsc -p tsconfig.server.build.json",
+    "server": "tsx watch --clear-screen=false --tsconfig tsconfig.server.json server.ts",
+    "start": "node scripts/dev.mjs",
+    "electron:dev": "npm run build:electron && node scripts/dev.mjs --electron",
+    "serve": "node scripts/serve.mjs",
+    "typecheck": "tsc -p tsconfig.app.json && tsc -p tsconfig.server.json --noEmit && tsc -p tsconfig.electron.json --noEmit && tsc -p tsconfig.test.json && tsc -p tsconfig.contract.json",
+    "lint": "eslint . --max-warnings 0",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "test:e2e": "node scripts/test-e2e.mjs",
+    "test:e2e-ui": "node scripts/test-e2e-ui.mjs",
+    "build": "npm run clean && vite build && npm run build:server && npm run build:electron && node scripts/build-info.mjs",
+    "build:server": "tsc -p tsconfig.server.json",
     "build:electron": "tsc -p tsconfig.electron.json",
-    "electron:dev": "npm run build:electron && concurrently \"npm run dev\" \"npm run server\" \"wait-on http://localhost:5173 && cross-env NODE_ENV=development electron .\"",
-    "dist": "npm run build && npm run build:server && npm run build:electron && electron-builder",
-    "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "preview": "vite preview",
-    "server": "nodemon --exec ts-node --project tsconfig.server.json server.ts",
-    "start": "concurrently \"npm run server\" \"npm run dev\"",
-    "postinstall": "node scripts/patch-rdp-nla.js"
+    "dist": "npm run build && node scripts/dist.mjs",
+    "dist:linux": "node scripts/dist-linux-docker.mjs",
+    "smoke:packaged": "node scripts/smoke-packaged.mjs",
+    "clean": "node scripts/clean.mjs",
+    "postinstall": "node scripts/check-native.mjs"
   },
   "build": {
     "appId": "com.shellmind.app",
     "productName": "ShellMind",
     "copyright": "Copyright © 2026 Luisbh",
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "publish": null,
+    "electronLanguages": [
+      "en-US",
+      "es",
+      "es-419"
+    ],
     "files": [
       "dist/**/*",
       "dist-electron/**/*",
       "dist-server/**/*",
       "package.json",
-      "node_modules/**/*"
+      "!**/*.db",
+      "!**/*.db-*",
+      "!**/*.sqlite*",
+      "!**/*.key",
+      "!**/*.tsbuildinfo",
+      "!**/.env*",
+      "!**/*.map",
+      "!**/node_modules/node-pty/{binding.gyp,src,deps,scripts,third_party,typings}{,/**}",
+      "!**/node_modules/node-pty/prebuilds/**",
+      "**/node_modules/node-pty/prebuilds/${platform}-${arch}/**",
+      "!**/node_modules/sqlite3/{binding.gyp,deps,src}{,/**}",
+      "!**/node_modules/sqlite3/build/**",
+      "**/node_modules/sqlite3/build/Release/node_sqlite3.node",
+      "!**/node_modules/{node-gyp,prebuild-install,nan,node-addon-api}{,/**}",
+      "!**/node_modules/ssh2/lib/protocol/crypto/{binding.gyp,src,build}{,/**}",
+      "!**/node_modules/cpu-features{,/**}",
+      "!**/*.pdb"
     ],
-    "directories": {
-      "output": "release"
+    "npmRebuild": false,
+    "afterPack": "./scripts/after-pack.mjs",
+    "asarUnpack": [
+      "**/node_modules/node-pty/**/*",
+      "**/node_modules/sqlite3/**/*"
+    ],
+    "electronFuses": {
+      "runAsNode": true,
+      "enableCookieEncryption": true,
+      "enableNodeOptionsEnvironmentVariable": false,
+      "enableNodeCliInspectArguments": false,
+      "enableEmbeddedAsarIntegrityValidation": true,
+      "onlyLoadAppFromAsar": true,
+      "grantFileProtocolExtraPrivileges": true
     },
+    "extraResources": [
+      {
+        "from": "build/icon.ico",
+        "to": "build/icon.ico"
+      },
+      {
+        "from": "build/icon.png",
+        "to": "build/icon.png"
+      }
+    ],
     "win": {
       "target": "nsis",
       "icon": "build/icon.ico"
@@ -39,78 +107,144 @@
     "nsis": {
       "installerIcon": "build/icon.ico",
       "uninstallerIcon": "build/icon.ico",
-      "installerHeaderIcon": "build/icon.ico"
+      "installerHeaderIcon": "build/icon.ico",
+      "include": "build/installer.nsh",
+      "artifactName": "${productName}-Setup-${version}-${arch}.${ext}"
+    },
+    "mac": {
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "icon": "build/icon.png",
+      "category": "public.app-category.developer-tools",
+      "artifactName": "${productName}-${version}-${arch}.${ext}"
     },
     "linux": {
-      "target": "AppImage"
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "icon": "build/icon.png",
+      "category": "Development",
+      "maintainer": "Luisbh <contact@luisbh.com>",
+      "synopsis": "Self-hosted remote workspace for terminals, files, remote desktop and AI"
     },
-    "extraResources": [
-      {
-        "from": "shellmind.db",
-        "to": "shellmind.db",
-        "filter": [
-          "**/*"
-        ]
-      },
-      {
-        "from": "build/icon.ico",
-        "to": "build/icon.ico"
-      }
-    ]
+    "appImage": {
+      "artifactName": "${productName}-${version}-${arch}.${ext}"
+    },
+    "deb": {
+      "artifactName": "${name}_${version}_${arch}.${ext}",
+      "depends": [
+        "libgtk-3-0",
+        "libnotify4",
+        "libnss3",
+        "libxss1",
+        "libxtst6",
+        "xdg-utils",
+        "libatspi2.0-0",
+        "libuuid1",
+        "libsecret-1-0",
+        "libgbm1",
+        "libasound2t64 | libasound2"
+      ]
+    }
   },
   "dependencies": {
-    "@aws-sdk/client-s3": "^3.956.0",
+    "@aws-sdk/client-s3": "^3.1065.0",
     "@aws-sdk/lib-storage": "^3.1065.0",
-    "@electerm/rdpjs": "^1.0.0",
-    "@google/generative-ai": "^0.24.1",
-    "@xterm/addon-search": "^0.16.0",
-    "@xterm/addon-web-links": "^0.11.0",
-    "basic-ftp": "^5.0.5",
-    "clsx": "^2.1.0",
+    "@google/genai": "^2.31.0",
+    "basic-ftp": "^6.2.3",
     "cors": "^2.8.5",
     "dotenv": "^17.2.3",
-    "electron-squirrel-startup": "^1.0.1",
     "express": "^5.1.0",
-    "lucide-react": "^0.309.0",
     "node-pty": "^1.1.0",
-    "node-rdpjs-2": "^0.3.5",
-    "react": "^18",
-    "react-dom": "^18",
-    "react-markdown": "^10.1.0",
     "socket.io": "^4.7.4",
-    "socket.io-client": "^4.7.4",
     "sqlite3": "^6.0.1",
-    "ssh2": "^1.15.0",
-    "tailwind-merge": "^2.2.0",
-    "xterm": "^5.3.0",
-    "xterm-addon-fit": "^0.8.0",
-    "xterm-addon-webgl": "^0.16.0"
+    "ssh-config": "^5.3.0",
+    "ssh2": "^1.15.0"
   },
   "devDependencies": {
-    "@electron/rebuild": "^4.0.1",
+    "@codemirror/autocomplete": "^6.20.4",
+    "@codemirror/commands": "^6.11.1",
+    "@codemirror/lang-javascript": "^6.2.5",
+    "@codemirror/lang-json": "^6.0.2",
+    "@codemirror/lang-markdown": "^6.5.2",
+    "@codemirror/lang-python": "^6.2.1",
+    "@codemirror/lang-sql": "^6.10.0",
+    "@codemirror/lang-xml": "^6.1.0",
+    "@codemirror/lang-yaml": "^6.1.3",
+    "@codemirror/language": "^6.13.1",
+    "@codemirror/legacy-modes": "^6.5.5",
+    "@codemirror/lint": "^6.9.7",
+    "@codemirror/search": "^6.7.2",
+    "@codemirror/state": "^6.7.6",
+    "@codemirror/view": "^6.43.15",
+    "@devolutions/iron-remote-desktop": "0.11.0",
+    "@devolutions/iron-remote-desktop-rdp": "0.7.0",
+    "@eslint/js": "^9.39.5",
+    "@fontsource-variable/inter": "^5.3.0",
+    "@fontsource-variable/jetbrains-mono": "^5.3.0",
+    "@lezer/highlight": "^1.2.5",
+    "@playwright/test": "^1.64.1",
     "@tailwindcss/typography": "^0.5.19",
+    "@tanstack/react-virtual": "^3.14.22",
+    "@testing-library/dom": "^10.4.2",
+    "@testing-library/jest-dom": "^7.0.1",
+    "@testing-library/react": "^16.3.3",
+    "@testing-library/user-event": "^14.6.8",
     "@types/cors": "^2.8.19",
-    "@types/electron": "^1.4.38",
     "@types/express": "^5.0.5",
-    "@types/node": "^20",
-    "@types/react": "^18",
-    "@types/react-dom": "^18",
-    "@types/ssh2": "^1.11.19",
-    "@vitejs/plugin-react": "^5.1.1",
-    "autoprefixer": "^10.0.1",
-    "concurrently": "^10.0.3",
-    "cross-env": "^10.1.0",
-    "electron": "^39.2.6",
-    "electron-builder": "^26.0.12",
-    "eslint": "^8",
-    "nodemon": "^3.1.11",
-    "png-to-ico": "^3.0.1",
-    "postcss": "^8",
-    "sharp": "^0.34.5",
-    "tailwindcss": "^3.3.0",
-    "ts-node": "^10.9.2",
-    "typescript": "^5",
-    "vite": "^7.2.4",
-    "wait-on": "^9.0.3"
+    "@types/node": "^24.19.2",
+    "@types/react": "^18.3.27",
+    "@types/react-dom": "^18.3.7",
+    "@types/ssh2": "^1.15.5",
+    "@vitejs/plugin-react": "^5.2.0",
+    "@vitest/coverage-v8": "^5.0.5",
+    "@xterm/addon-fit": "^0.11.0",
+    "@xterm/addon-search": "^0.16.0",
+    "@xterm/addon-unicode11": "^0.9.0",
+    "@xterm/addon-web-links": "^0.12.0",
+    "@xterm/addon-webgl": "^0.19.0",
+    "@xterm/xterm": "^6.0.0",
+    "autoprefixer": "^10.4.22",
+    "clsx": "^2.1.1",
+    "concurrently": "^10.0.6",
+    "electron": "^45.0.0",
+    "electron-builder": "^26.15.3",
+    "eslint": "^9.39.5",
+    "eslint-plugin-jsx-a11y": "^6.10.2",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "globals": "^17.13.0",
+    "jsdom": "^30.1.3",
+    "lucide-react": "^0.309.0",
+    "postcss": "^8.5.31",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1",
+    "socket.io-client": "^4.8.1",
+    "tailwind-merge": "^2.6.0",
+    "tailwindcss": "^3.4.18",
+    "tsx": "^4.23.15",
+    "typescript": "~5.9.3",
+    "typescript-eslint": "^8.72.0",
+    "vite": "^7.3.7",
+    "vitest": "^5.0.5",
+    "wait-on": "^9.0.3",
+    "zustand": "^5.0.16"
+  },
+  "overrides": {
+    "postcss-selector-parser": "^7.1.6"
+  },
+  "allowScripts": {
+    "sqlite3": true,
+    "node-pty": true,
+    "ssh2": true,
+    "cpu-features": true,
+    "esbuild": true,
+    "electron-winstaller": false,
+    "protobufjs": false,
+    "@google/genai": false
   }
 }

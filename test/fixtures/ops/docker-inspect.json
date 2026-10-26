@@ -1,0 +1,76 @@
+[
+    {
+        "Id": "fde9ade5780c770cb294944bbf33bdad30ee2bced0a93ecc164b324800f0037d",
+        "Created": "2026-10-24T15:18:17.405471798Z",
+        "Path": "sleep",
+        "Args": ["infinity"],
+        "State": {
+            "Status": "running",
+            "Running": true,
+            "Paused": false,
+            "Restarting": false,
+            "OOMKilled": false,
+            "Dead": false,
+            "Pid": 587,
+            "ExitCode": 0,
+            "Error": "",
+            "StartedAt": "2026-10-24T15:18:19.006964572Z",
+            "FinishedAt": "0001-01-01T00:00:00Z",
+            "Health": {
+                "Status": "healthy",
+                "FailingStreak": 0,
+                "Log": [
+                    { "Start": "2026-10-24T15:18:24.374533498Z", "End": "2026-10-24T15:18:24.481747592Z", "ExitCode": 0, "Output": "" },
+                    { "Start": "2026-10-24T15:18:29.483535436Z", "End": "2026-10-24T15:18:29.600324741Z", "ExitCode": 0, "Output": "ok\n" }
+                ]
+            }
+        },
+        "Image": "sha256:b116e155074440ffd9e449559433feb4cd2341eb3554b1da1c638c976e56451d",
+        "Name": "/demo-web-1",
+        "RestartCount": 2,
+        "HostConfig": {
+            "Binds": ["demo_data:/data:rw", "/srv/demo:/app:ro"],
+            "NetworkMode": "demo_default",
+            "PortBindings": { "80/tcp": [{ "HostIp": "", "HostPort": "8080" }] },
+            "RestartPolicy": { "Name": "on-failure", "MaximumRetryCount": 5 }
+        },
+        "Mounts": [
+            { "Type": "bind", "Source": "/srv/demo", "Destination": "/app", "Mode": "ro", "RW": false, "Propagation": "rprivate" },
+            { "Type": "volume", "Name": "demo_data", "Source": "/var/lib/docker/volumes/demo_data/_data", "Destination": "/data", "Driver": "local", "Mode": "rw", "RW": true, "Propagation": "" }
+        ],
+        "Config": {
+            "Hostname": "fde9ade5780c",
+            "User": "",
+            "ExposedPorts": { "80/tcp": {}, "9000/tcp": {} },
+            "Env": ["DB_PASSWORD=hunter2", "EMPTY=", "URL=postgres://u:p@db/x?a=b", "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"],
+            "Cmd": ["sleep", "infinity"],
+            "Healthcheck": { "Test": ["CMD", "true"], "Interval": 5000000000 },
+            "Image": "busybox:1.36",
+            "WorkingDir": "",
+            "Entrypoint": null,
+            "Labels": {
+                "com.docker.compose.config-hash": "cbe53271ed705a1d4565576c308e5ea949941f428c4b1c7ce694ac4ef21117f0",
+                "com.docker.compose.project": "demo",
+                "com.docker.compose.project.config_files": "/srv/demo/compose.yaml,/srv/demo/compose.prod.yaml",
+                "com.docker.compose.project.working_dir": "/srv/demo",
+                "com.docker.compose.service": "web",
+                "com.docker.compose.version": "5.6.1"
+            }
+        },
+        "NetworkSettings": {
+            "Ports": {
+                "80/tcp": [{ "HostIp": "0.0.0.0", "HostPort": "8080" }, { "HostIp": "::", "HostPort": "8080" }],
+                "9000/tcp": null
+            },
+            "Networks": {
+                "demo_default": {
+                    "Aliases": ["demo-web-1", "web"],
+                    "Gateway": "172.19.0.1",
+                    "IPAddress": "172.19.0.3",
+                    "MacAddress": "92:13:72:a1:75:90",
+                    "DNSNames": ["demo-web-1", "web", "fde9ade5780c"]
+                }
+            }
+        }
+    }
+]

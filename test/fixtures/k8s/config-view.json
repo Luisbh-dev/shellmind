@@ -1,0 +1,40 @@
+{
+  "kind": "Config",
+  "apiVersion": "v1",
+  "clusters": [
+    {
+      "name": "k3s-lab",
+      "cluster": {
+        "server": "https://127.0.0.1:46443",
+        "certificate-authority-data": "DATA+OMITTED"
+      }
+    }
+  ],
+  "users": [
+    {
+      "name": "k3s-lab-admin",
+      "user": {
+        "client-certificate-data": "DATA+OMITTED",
+        "client-key-data": "DATA+OMITTED"
+      }
+    }
+  ],
+  "contexts": [
+    {
+      "name": "k3s-admin",
+      "context": {
+        "cluster": "k3s-lab",
+        "user": "k3s-lab-admin"
+      }
+    },
+    {
+      "name": "k3s-lab",
+      "context": {
+        "cluster": "k3s-lab",
+        "user": "k3s-lab-admin",
+        "namespace": "shop"
+      }
+    }
+  ],
+  "current-context": "k3s-admin"
+}

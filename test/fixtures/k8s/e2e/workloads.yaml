@@ -1,0 +1,107 @@
+# Workloads of the Kubernetes end-to-end test (test/e2e/k8s-k3s.test.ts). The
+# image is the host's alpine:3, imported into the cluster (no registry pull).
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: shop
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+  namespace: shop
+spec:
+  replicas: 2
+  selector:
+    matchLabels: { app: web }
+  template:
+    metadata:
+      labels: { app: web }
+    spec:
+      terminationGracePeriodSeconds: 1
+      containers:
+        - name: app
+          image: docker.io/library/alpine:3
+          imagePullPolicy: Never
+          command: ["sh", "-c", "while true; do echo \"tick $(date +%s)\"; sleep 1; done"]
+          env:
+            - { name: DB_PASSWORD, value: e2e-not-a-real-secret }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api
+  namespace: shop
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: api }
+  template:
+    metadata:
+      labels: { app: api }
+    spec:
+      terminationGracePeriodSeconds: 1
+      containers:
+        - name: api
+          image: docker.io/library/alpine:3
+          imagePullPolicy: Never
+          command: ["sh", "-c", "echo 'api starting'; echo 'panic: dial tcp 10.43.0.99:5432: connect: connection refused' >&2; exit 1"]
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: migrate
+  namespace: shop
+spec:
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: migrate
+          image: docker.io/library/alpine:3
+          imagePullPolicy: Never
+          command: ["sh", "-c", "echo migrated"]
+---
+# Running but never ready (its readiness probe fails): a shell still opens.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: notready
+  namespace: shop
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: notready }
+  template:
+    metadata:
+      labels: { app: notready }
+    spec:
+      terminationGracePeriodSeconds: 1
+      containers:
+        - name: app
+          image: docker.io/library/alpine:3
+          imagePullPolicy: Never
+          command: ["sh", "-c", "sleep 100000"]
+          readinessProbe:
+            exec: { command: ["false"] }
+            periodSeconds: 5
+---
+# Stuck in its init container: its logs, shell and evidence are the init container's.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: init-stuck
+  namespace: shop
+  labels: { app: init-stuck }
+spec:
+  terminationGracePeriodSeconds: 1
+  initContainers:
+    - name: wait-db
+      image: docker.io/library/alpine:3
+      imagePullPolicy: Never
+      command: ["sh", "-c", "echo waiting for db; sleep 100000"]
+  containers:
+    - name: app
+      image: docker.io/library/alpine:3
+      imagePullPolicy: Never
+      command: ["sh", "-c", "sleep 100000"]

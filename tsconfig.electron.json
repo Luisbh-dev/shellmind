@@ -1,12 +1,12 @@
 {
   "extends": "./tsconfig.json",
   "compilerOptions": {
-    "module": "commonjs",
-    "target": "es2019",
-    "outDir": "dist-electron",
-    "esModuleInterop": true,
-    "skipLibCheck": true,
+    "lib": ["ES2022"],
+    "module": "CommonJS",
     "moduleResolution": "node",
+    "types": ["node"],
+    "rootDir": "electron",
+    "outDir": "dist-electron",
     "noEmit": false
   },
   "include": ["electron/**/*.ts"]

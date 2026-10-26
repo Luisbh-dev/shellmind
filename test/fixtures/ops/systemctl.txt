@@ -1,0 +1,25 @@
+
+@@SM:units
+accounts-daemon.service                        loaded    active   running Accounts Service
+apparmor.service                               loaded    active   exited  Load AppArmor profiles
+● auditd.service                               not-found inactive dead    auditd.service
+cron.service                                   loaded    active   running Regular background program processing daemon
+docker.service                                 loaded    active   running Docker Application Container Engine
+getty@tty1.service                             loaded    active   running Getty on tty1
+nginx.service                                  loaded    failed   failed  A high performance web server and a reverse proxy server
+ssh.service                                    loaded    active   running OpenBSD Secure Shell server
+systemd-fsck@dev-disk-by\x2duuid-1234.service  loaded    active   exited  File System Check on /dev/disk/by-uuid/1234
+
+@@SM:files
+accounts-daemon.service                    enabled         enabled
+apparmor.service                           enabled         enabled
+cron.service                               enabled         enabled
+docker.service                             enabled         enabled
+getty@.service                             enabled         enabled
+nginx.service                              enabled         enabled
+postgresql.service                         disabled        enabled
+rsync.service                              masked          enabled
+ssh.service                                enabled         enabled
+systemd-fsck@.service                      static          -
+
+@@SM:end

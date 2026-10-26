@@ -1,40 +1,44 @@
 # Dependencies
-node_modules
+node_modules/
 .pnp
 .pnp.js
 
-# Testing
-coverage
-
-# Production / Build Folders (Web & Electron)
-dist
-dist-electron
-dist-server
-release
-release*
-scripts
+# Build output (web, server, Electron) and packaged installers
+/dist/
+/dist-server/
+/dist-electron/
+/release/
 *.tsbuildinfo
 
-# Environment Variables
-.env
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
+# Tests
+/coverage/
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
 
-# Database (Keep your data private)
-shellmind.db
-shellmind.db-journal
-*.sqlite
+# Environment variables (keep the documented template)
+.env
+.env.*
+!.env.example
+
+# Local data: databases and encryption keys never belong in git
 *.db
+*.db-journal
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+/.data/
+shellmind.key
 
 # Logs
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 *.log
-logs
-pids
+logs/
+pids/
 *.pid
 *.seed
 *.pid.lock
@@ -42,8 +46,10 @@ pids
 # Local debug captures
 tmp-rdp/
 server_dump.txt
-docs/
 
-# OS Files
+# Editors and OS files
+.vscode/*
+!.vscode/extensions.json
+.idea/
 .DS_Store
 Thumbs.db

@@ -1,0 +1,588 @@
+{
+  "apiVersion": "v1",
+  "items": [
+    {
+      "apiVersion": "apps/v1",
+      "kind": "Deployment",
+      "metadata": {
+        "annotations": {
+          "deployment.kubernetes.io/revision": "1",
+          "kubectl.kubernetes.io/last-applied-configuration": "{\"apiVersion\":\"apps/v1\",\"kind\":\"Deployment\",\"metadata\":{\"annotations\":{},\"name\":\"api\",\"namespace\":\"shop\"},\"spec\":{\"replicas\":1,\"selector\":{\"matchLabels\":{\"app\":\"api\"}},\"template\":{\"metadata\":{\"labels\":{\"app\":\"api\"}},\"spec\":{\"containers\":[{\"command\":[\"sh\",\"-c\",\"echo 'api starting'; echo 'connecting to postgres at db.shop.svc:5432'; sleep 2; echo 'panic: dial tcp 10.43.0.99:5432: connect: connection refused' \\u003e\\u00262; exit 1\"],\"image\":\"busybox:1.36\",\"name\":\"api\"}]}}}}\n"
+        },
+        "creationTimestamp": "2026-10-24T23:40:40Z",
+        "generation": 1,
+        "name": "api",
+        "namespace": "shop",
+        "resourceVersion": "744",
+        "uid": "9548f41f-162e-44fb-b75b-2f4657e85392"
+      },
+      "spec": {
+        "progressDeadlineSeconds": 600,
+        "replicas": 1,
+        "revisionHistoryLimit": 10,
+        "selector": {
+          "matchLabels": {
+            "app": "api"
+          }
+        },
+        "strategy": {
+          "rollingUpdate": {
+            "maxSurge": "25%",
+            "maxUnavailable": "25%"
+          },
+          "type": "RollingUpdate"
+        },
+        "template": {
+          "metadata": {
+            "creationTimestamp": null,
+            "labels": {
+              "app": "api"
+            }
+          },
+          "spec": {
+            "containers": [
+              {
+                "command": [
+                  "sh",
+                  "-c",
+                  "echo 'api starting'; echo 'connecting to postgres at db.shop.svc:5432'; sleep 2; echo 'panic: dial tcp 10.43.0.99:5432: connect: connection refused' >&2; exit 1"
+                ],
+                "image": "busybox:1.36",
+                "imagePullPolicy": "IfNotPresent",
+                "name": "api",
+                "resources": {},
+                "terminationMessagePath": "/dev/termination-log",
+                "terminationMessagePolicy": "File"
+              }
+            ],
+            "dnsPolicy": "ClusterFirst",
+            "restartPolicy": "Always",
+            "schedulerName": "default-scheduler",
+            "securityContext": {},
+            "terminationGracePeriodSeconds": 30
+          }
+        }
+      },
+      "status": {
+        "conditions": [
+          {
+            "lastTransitionTime": "2026-10-24T23:40:40Z",
+            "lastUpdateTime": "2026-10-24T23:40:45Z",
+            "message": "ReplicaSet \"api-857679959c\" has successfully progressed.",
+            "reason": "NewReplicaSetAvailable",
+            "status": "True",
+            "type": "Progressing"
+          },
+          {
+            "lastTransitionTime": "2026-10-24T23:46:47Z",
+            "lastUpdateTime": "2026-10-24T23:46:47Z",
+            "message": "Deployment does not have minimum availability.",
+            "reason": "MinimumReplicasUnavailable",
+            "status": "False",
+            "type": "Available"
+          }
+        ],
+        "observedGeneration": 1,
+        "replicas": 1,
+        "unavailableReplicas": 1,
+        "updatedReplicas": 1
+      }
+    },
+    {
+      "apiVersion": "apps/v1",
+      "kind": "Deployment",
+      "metadata": {
+        "annotations": {
+          "deployment.kubernetes.io/revision": "1",
+          "kubectl.kubernetes.io/last-applied-configuration": "{\"apiVersion\":\"apps/v1\",\"kind\":\"Deployment\",\"metadata\":{\"annotations\":{},\"name\":\"broken-image\",\"namespace\":\"shop\"},\"spec\":{\"replicas\":1,\"selector\":{\"matchLabels\":{\"app\":\"broken-image\"}},\"template\":{\"metadata\":{\"labels\":{\"app\":\"broken-image\"}},\"spec\":{\"containers\":[{\"image\":\"nginx:does-not-exist-shellmind\",\"name\":\"app\"}]}}}}\n"
+        },
+        "creationTimestamp": "2026-10-24T23:40:40Z",
+        "generation": 1,
+        "name": "broken-image",
+        "namespace": "shop",
+        "resourceVersion": "457",
+        "uid": "5549bace-1c23-4c77-b18a-a3f576b2f94d"
+      },
+      "spec": {
+        "progressDeadlineSeconds": 600,
+        "replicas": 1,
+        "revisionHistoryLimit": 10,
+        "selector": {
+          "matchLabels": {
+            "app": "broken-image"
+          }
+        },
+        "strategy": {
+          "rollingUpdate": {
+            "maxSurge": "25%",
+            "maxUnavailable": "25%"
+          },
+          "type": "RollingUpdate"
+        },
+        "template": {
+          "metadata": {
+            "creationTimestamp": null,
+            "labels": {
+              "app": "broken-image"
+            }
+          },
+          "spec": {
+            "containers": [
+              {
+                "image": "nginx:does-not-exist-shellmind",
+                "imagePullPolicy": "IfNotPresent",
+                "name": "app",
+                "resources": {},
+                "terminationMessagePath": "/dev/termination-log",
+                "terminationMessagePolicy": "File"
+              }
+            ],
+            "dnsPolicy": "ClusterFirst",
+            "restartPolicy": "Always",
+            "schedulerName": "default-scheduler",
+            "securityContext": {},
+            "terminationGracePeriodSeconds": 30
+          }
+        }
+      },
+      "status": {
+        "conditions": [
+          {
+            "lastTransitionTime": "2026-10-24T23:40:40Z",
+            "lastUpdateTime": "2026-10-24T23:40:40Z",
+            "message": "Deployment does not have minimum availability.",
+            "reason": "MinimumReplicasUnavailable",
+            "status": "False",
+            "type": "Available"
+          },
+          {
+            "lastTransitionTime": "2026-10-24T23:40:40Z",
+            "lastUpdateTime": "2026-10-24T23:40:40Z",
+            "message": "ReplicaSet \"broken-image-7bb45cf757\" is progressing.",
+            "reason": "ReplicaSetUpdated",
+            "status": "True",
+            "type": "Progressing"
+          }
+        ],
+        "observedGeneration": 1,
+        "replicas": 1,
+        "unavailableReplicas": 1,
+        "updatedReplicas": 1
+      }
+    },
+    {
+      "apiVersion": "apps/v1",
+      "kind": "Deployment",
+      "metadata": {
+        "annotations": {
+          "deployment.kubernetes.io/revision": "1",
+          "kubectl.kubernetes.io/last-applied-configuration": "{\"apiVersion\":\"apps/v1\",\"kind\":\"Deployment\",\"metadata\":{\"annotations\":{},\"name\":\"web\",\"namespace\":\"shop\"},\"spec\":{\"replicas\":2,\"selector\":{\"matchLabels\":{\"app\":\"web\"}},\"template\":{\"metadata\":{\"labels\":{\"app\":\"web\"}},\"spec\":{\"containers\":[{\"env\":[{\"name\":\"APP_MODE\",\"value\":\"production\"},{\"name\":\"DB_PASSWORD\",\"value\":\"hunter2-not-a-real-secret\"}],\"image\":\"nginx:1.27-alpine\",\"name\":\"nginx\",\"ports\":[{\"containerPort\":80}]},{\"command\":[\"sh\",\"-c\",\"while true; do echo \\\"$(date) sidecar heartbeat\\\"; sleep 5; done\"],\"image\":\"busybox:1.36\",\"name\":\"sidecar\"}]}}}}\n"
+        },
+        "creationTimestamp": "2026-10-24T23:40:40Z",
+        "generation": 1,
+        "name": "web",
+        "namespace": "shop",
+        "resourceVersion": "538",
+        "uid": "5cbe7952-07a2-4902-81f5-58995b984223"
+      },
+      "spec": {
+        "progressDeadlineSeconds": 600,
+        "replicas": 2,
+        "revisionHistoryLimit": 10,
+        "selector": {
+          "matchLabels": {
+            "app": "web"
+          }
+        },
+        "strategy": {
+          "rollingUpdate": {
+            "maxSurge": "25%",
+            "maxUnavailable": "25%"
+          },
+          "type": "RollingUpdate"
+        },
+        "template": {
+          "metadata": {
+            "creationTimestamp": null,
+            "labels": {
+              "app": "web"
+            }
+          },
+          "spec": {
+            "containers": [
+              {
+                "env": [
+                  {
+                    "name": "APP_MODE",
+                    "value": "production"
+                  },
+                  {
+                    "name": "DB_PASSWORD",
+                    "value": "hunter2-not-a-real-secret"
+                  }
+                ],
+                "image": "nginx:1.27-alpine",
+                "imagePullPolicy": "IfNotPresent",
+                "name": "nginx",
+                "ports": [
+                  {
+                    "containerPort": 80,
+                    "protocol": "TCP"
+                  }
+                ],
+                "resources": {},
+                "terminationMessagePath": "/dev/termination-log",
+                "terminationMessagePolicy": "File"
+              },
+              {
+                "command": [
+                  "sh",
+                  "-c",
+                  "while true; do echo \"$(date) sidecar heartbeat\"; sleep 5; done"
+                ],
+                "image": "busybox:1.36",
+                "imagePullPolicy": "IfNotPresent",
+                "name": "sidecar",
+                "resources": {},
+                "terminationMessagePath": "/dev/termination-log",
+                "terminationMessagePolicy": "File"
+              }
+            ],
+            "dnsPolicy": "ClusterFirst",
+            "restartPolicy": "Always",
+            "schedulerName": "default-scheduler",
+            "securityContext": {},
+            "terminationGracePeriodSeconds": 30
+          }
+        }
+      },
+      "status": {
+        "availableReplicas": 2,
+        "conditions": [
+          {
+            "lastTransitionTime": "2026-10-24T23:40:49Z",
+            "lastUpdateTime": "2026-10-24T23:40:49Z",
+            "message": "Deployment has minimum availability.",
+            "reason": "MinimumReplicasAvailable",
+            "status": "True",
+            "type": "Available"
+          },
+          {
+            "lastTransitionTime": "2026-10-24T23:40:40Z",
+            "lastUpdateTime": "2026-10-24T23:40:49Z",
+            "message": "ReplicaSet \"web-64b7d74999\" has successfully progressed.",
+            "reason": "NewReplicaSetAvailable",
+            "status": "True",
+            "type": "Progressing"
+          }
+        ],
+        "observedGeneration": 1,
+        "readyReplicas": 2,
+        "replicas": 2,
+        "updatedReplicas": 2
+      }
+    },
+    {
+      "apiVersion": "apps/v1",
+      "kind": "StatefulSet",
+      "metadata": {
+        "annotations": {
+          "kubectl.kubernetes.io/last-applied-configuration": "{\"apiVersion\":\"apps/v1\",\"kind\":\"StatefulSet\",\"metadata\":{\"annotations\":{},\"name\":\"cache\",\"namespace\":\"shop\"},\"spec\":{\"replicas\":1,\"selector\":{\"matchLabels\":{\"app\":\"cache\"}},\"serviceName\":\"cache\",\"template\":{\"metadata\":{\"labels\":{\"app\":\"cache\"}},\"spec\":{\"containers\":[{\"command\":[\"sh\",\"-c\",\"echo cache ready; while true; do sleep 30; done\"],\"image\":\"busybox:1.36\",\"name\":\"cache\"}]}}}}\n"
+        },
+        "creationTimestamp": "2026-10-24T23:40:40Z",
+        "generation": 1,
+        "name": "cache",
+        "namespace": "shop",
+        "resourceVersion": "508",
+        "uid": "dcab1961-b013-4da8-98ee-aaa954126992"
+      },
+      "spec": {
+        "persistentVolumeClaimRetentionPolicy": {
+          "whenDeleted": "Retain",
+          "whenScaled": "Retain"
+        },
+        "podManagementPolicy": "OrderedReady",
+        "replicas": 1,
+        "revisionHistoryLimit": 10,
+        "selector": {
+          "matchLabels": {
+            "app": "cache"
+          }
+        },
+        "serviceName": "cache",
+        "template": {
+          "metadata": {
+            "creationTimestamp": null,
+            "labels": {
+              "app": "cache"
+            }
+          },
+          "spec": {
+            "containers": [
+              {
+                "command": [
+                  "sh",
+                  "-c",
+                  "echo cache ready; while true; do sleep 30; done"
+                ],
+                "image": "busybox:1.36",
+                "imagePullPolicy": "IfNotPresent",
+                "name": "cache",
+                "resources": {},
+                "terminationMessagePath": "/dev/termination-log",
+                "terminationMessagePolicy": "File"
+              }
+            ],
+            "dnsPolicy": "ClusterFirst",
+            "restartPolicy": "Always",
+            "schedulerName": "default-scheduler",
+            "securityContext": {},
+            "terminationGracePeriodSeconds": 30
+          }
+        },
+        "updateStrategy": {
+          "rollingUpdate": {
+            "partition": 0
+          },
+          "type": "RollingUpdate"
+        }
+      },
+      "status": {
+        "availableReplicas": 1,
+        "collisionCount": 0,
+        "currentReplicas": 1,
+        "currentRevision": "cache-86f6f749d6",
+        "observedGeneration": 1,
+        "readyReplicas": 1,
+        "replicas": 1,
+        "updateRevision": "cache-86f6f749d6",
+        "updatedReplicas": 1
+      }
+    },
+    {
+      "apiVersion": "apps/v1",
+      "kind": "DaemonSet",
+      "metadata": {
+        "annotations": {
+          "deprecated.daemonset.template.generation": "1",
+          "kubectl.kubernetes.io/last-applied-configuration": "{\"apiVersion\":\"apps/v1\",\"kind\":\"DaemonSet\",\"metadata\":{\"annotations\":{},\"name\":\"node-agent\",\"namespace\":\"shop\"},\"spec\":{\"selector\":{\"matchLabels\":{\"app\":\"node-agent\"}},\"template\":{\"metadata\":{\"labels\":{\"app\":\"node-agent\"}},\"spec\":{\"containers\":[{\"command\":[\"sh\",\"-c\",\"while true; do echo \\\"agent tick $(date +%s)\\\"; sleep 10; done\"],\"image\":\"busybox:1.36\",\"name\":\"agent\"}]}}}}\n"
+        },
+        "creationTimestamp": "2026-10-24T23:40:40Z",
+        "generation": 1,
+        "name": "node-agent",
+        "namespace": "shop",
+        "resourceVersion": "510",
+        "uid": "9bf3b109-f3dc-4f1f-b387-5bc2daea6ebd"
+      },
+      "spec": {
+        "revisionHistoryLimit": 10,
+        "selector": {
+          "matchLabels": {
+            "app": "node-agent"
+          }
+        },
+        "template": {
+          "metadata": {
+            "creationTimestamp": null,
+            "labels": {
+              "app": "node-agent"
+            }
+          },
+          "spec": {
+            "containers": [
+              {
+                "command": [
+                  "sh",
+                  "-c",
+                  "while true; do echo \"agent tick $(date +%s)\"; sleep 10; done"
+                ],
+                "image": "busybox:1.36",
+                "imagePullPolicy": "IfNotPresent",
+                "name": "agent",
+                "resources": {},
+                "terminationMessagePath": "/dev/termination-log",
+                "terminationMessagePolicy": "File"
+              }
+            ],
+            "dnsPolicy": "ClusterFirst",
+            "restartPolicy": "Always",
+            "schedulerName": "default-scheduler",
+            "securityContext": {},
+            "terminationGracePeriodSeconds": 30
+          }
+        },
+        "updateStrategy": {
+          "rollingUpdate": {
+            "maxSurge": 0,
+            "maxUnavailable": 1
+          },
+          "type": "RollingUpdate"
+        }
+      },
+      "status": {
+        "currentNumberScheduled": 1,
+        "desiredNumberScheduled": 1,
+        "numberAvailable": 1,
+        "numberMisscheduled": 0,
+        "numberReady": 1,
+        "observedGeneration": 1,
+        "updatedNumberScheduled": 1
+      }
+    },
+    {
+      "apiVersion": "batch/v1",
+      "kind": "Job",
+      "metadata": {
+        "annotations": {
+          "kubectl.kubernetes.io/last-applied-configuration": "{\"apiVersion\":\"batch/v1\",\"kind\":\"Job\",\"metadata\":{\"annotations\":{},\"name\":\"migrate\",\"namespace\":\"shop\"},\"spec\":{\"template\":{\"spec\":{\"containers\":[{\"command\":[\"sh\",\"-c\",\"echo running migrations; sleep 3; echo done\"],\"image\":\"busybox:1.36\",\"name\":\"migrate\"}],\"restartPolicy\":\"Never\"}}}}\n"
+        },
+        "creationTimestamp": "2026-10-24T23:40:40Z",
+        "generation": 1,
+        "labels": {
+          "batch.kubernetes.io/controller-uid": "47e4375a-1fb9-42c9-8564-611f76181dc2",
+          "batch.kubernetes.io/job-name": "migrate",
+          "controller-uid": "47e4375a-1fb9-42c9-8564-611f76181dc2",
+          "job-name": "migrate"
+        },
+        "name": "migrate",
+        "namespace": "shop",
+        "resourceVersion": "550",
+        "uid": "47e4375a-1fb9-42c9-8564-611f76181dc2"
+      },
+      "spec": {
+        "backoffLimit": 6,
+        "completionMode": "NonIndexed",
+        "completions": 1,
+        "manualSelector": false,
+        "parallelism": 1,
+        "podReplacementPolicy": "TerminatingOrFailed",
+        "selector": {
+          "matchLabels": {
+            "batch.kubernetes.io/controller-uid": "47e4375a-1fb9-42c9-8564-611f76181dc2"
+          }
+        },
+        "suspend": false,
+        "template": {
+          "metadata": {
+            "creationTimestamp": null,
+            "labels": {
+              "batch.kubernetes.io/controller-uid": "47e4375a-1fb9-42c9-8564-611f76181dc2",
+              "batch.kubernetes.io/job-name": "migrate",
+              "controller-uid": "47e4375a-1fb9-42c9-8564-611f76181dc2",
+              "job-name": "migrate"
+            }
+          },
+          "spec": {
+            "containers": [
+              {
+                "command": [
+                  "sh",
+                  "-c",
+                  "echo running migrations; sleep 3; echo done"
+                ],
+                "image": "busybox:1.36",
+                "imagePullPolicy": "IfNotPresent",
+                "name": "migrate",
+                "resources": {},
+                "terminationMessagePath": "/dev/termination-log",
+                "terminationMessagePolicy": "File"
+              }
+            ],
+            "dnsPolicy": "ClusterFirst",
+            "restartPolicy": "Never",
+            "schedulerName": "default-scheduler",
+            "securityContext": {},
+            "terminationGracePeriodSeconds": 30
+          }
+        }
+      },
+      "status": {
+        "completionTime": "2026-10-24T23:40:51Z",
+        "conditions": [
+          {
+            "lastProbeTime": "2026-10-24T23:40:51Z",
+            "lastTransitionTime": "2026-10-24T23:40:51Z",
+            "message": "Reached expected number of succeeded pods",
+            "reason": "CompletionsReached",
+            "status": "True",
+            "type": "SuccessCriteriaMet"
+          },
+          {
+            "lastProbeTime": "2026-10-24T23:40:51Z",
+            "lastTransitionTime": "2026-10-24T23:40:51Z",
+            "message": "Reached expected number of succeeded pods",
+            "reason": "CompletionsReached",
+            "status": "True",
+            "type": "Complete"
+          }
+        ],
+        "ready": 0,
+        "startTime": "2026-10-24T23:40:40Z",
+        "succeeded": 1,
+        "terminating": 0,
+        "uncountedTerminatedPods": {}
+      }
+    },
+    {
+      "apiVersion": "batch/v1",
+      "kind": "CronJob",
+      "metadata": {
+        "annotations": {
+          "kubectl.kubernetes.io/last-applied-configuration": "{\"apiVersion\":\"batch/v1\",\"kind\":\"CronJob\",\"metadata\":{\"annotations\":{},\"name\":\"report\",\"namespace\":\"shop\"},\"spec\":{\"jobTemplate\":{\"spec\":{\"template\":{\"spec\":{\"containers\":[{\"command\":[\"sh\",\"-c\",\"echo nightly report\"],\"image\":\"busybox:1.36\",\"name\":\"report\"}],\"restartPolicy\":\"OnFailure\"}}}},\"schedule\":\"*/10 * * * *\"}}\n"
+        },
+        "creationTimestamp": "2026-10-24T23:40:40Z",
+        "generation": 1,
+        "name": "report",
+        "namespace": "shop",
+        "resourceVersion": "468",
+        "uid": "704f4a71-71f1-4864-ae7d-d1ca2f386808"
+      },
+      "spec": {
+        "concurrencyPolicy": "Allow",
+        "failedJobsHistoryLimit": 1,
+        "jobTemplate": {
+          "metadata": {
+            "creationTimestamp": null
+          },
+          "spec": {
+            "template": {
+              "metadata": {
+                "creationTimestamp": null
+              },
+              "spec": {
+                "containers": [
+                  {
+                    "command": [
+                      "sh",
+                      "-c",
+                      "echo nightly report"
+                    ],
+                    "image": "busybox:1.36",
+                    "imagePullPolicy": "IfNotPresent",
+                    "name": "report",
+                    "resources": {},
+                    "terminationMessagePath": "/dev/termination-log",
+                    "terminationMessagePolicy": "File"
+                  }
+                ],
+                "dnsPolicy": "ClusterFirst",
+                "restartPolicy": "OnFailure",
+                "schedulerName": "default-scheduler",
+                "securityContext": {},
+                "terminationGracePeriodSeconds": 30
+              }
+            }
+          }
+        },
+        "schedule": "*/10 * * * *",
+        "successfulJobsHistoryLimit": 3,
+        "suspend": false
+      },
+      "status": {}
+    }
+  ],
+  "kind": "List",
+  "metadata": {
+    "resourceVersion": ""
+  }
+}

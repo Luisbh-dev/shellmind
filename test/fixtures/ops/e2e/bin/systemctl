@@ -1,0 +1,43 @@
+#!/bin/sh
+# systemctl stand-in: listing works for anyone, changes need root.
+echo "systemctl $*" >> /tmp/ops-calls.log
+for arg in "$@"; do
+    case "$arg" in
+        list-units)
+            case "$*" in
+                *--state=failed*) echo "nginx.service loaded failed failed A high performance web server" ;;
+                *)
+                    echo "cron.service                 loaded    active   running Periodic command scheduler"
+                    echo "nginx.service                loaded    failed   failed  A high performance web server"
+                    echo "sshd.service                 loaded    active   running OpenSSH server daemon"
+                    ;;
+            esac
+            exit 0 ;;
+        list-unit-files)
+            echo "cron.service                 enabled   enabled"
+            echo "nginx.service                enabled   enabled"
+            echo "postgresql.service           disabled  enabled"
+            echo "sshd.service                 enabled   enabled"
+            exit 0 ;;
+        show)
+            echo "Id=nginx.service"
+            echo "Description=A high performance web server"
+            echo "ActiveState=failed"
+            echo "SubState=failed"
+            echo "UnitFileState=enabled"
+            echo "MainPID=0"
+            exit 0 ;;
+        status)
+            echo "x nginx.service - A high performance web server"
+            echo "     Loaded: loaded (/lib/systemd/system/nginx.service; enabled)"
+            echo "     Active: failed (Result: exit-code)"
+            exit 3 ;;
+        start|stop|restart|reload|enable|disable)
+            if [ "$(id -u)" != 0 ]; then
+                echo "Failed to $arg unit: Interactive authentication required." >&2
+                exit 4
+            fi
+            exit 0 ;;
+    esac
+done
+exit 0

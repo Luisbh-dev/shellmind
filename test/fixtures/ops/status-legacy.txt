@@ -1,0 +1,66 @@
+
+@@SM:host
+legacy-db
+
+@@SM:os
+Linux
+
+@@SM:kernel
+2.6.32-754.el6.x86_64
+
+@@SM:loadavg
+1.00 0.75 0.50 1/120 999
+
+@@SM:meminfo
+MemTotal:        4046856 kB
+MemFree:          512000 kB
+Buffers:          102400 kB
+Cached:          1024000 kB
+SwapTotal:             0 kB
+SwapFree:              0 kB
+
+@@SM:pagesize
+4096
+
+@@SM:virtualnet
+
+@@SM:mounts
+/dev/vda1 / ext4
+
+@@SM:df
+Filesystem         1024-blocks      Used Available Capacity Mounted on
+/dev/vda1             20511356  10255678   9203454      53% /
+
+@@SM:failed
+
+@@SM:users
+0
+
+@@SM:up1
+100.00 50.00
+
+@@SM:cpu1
+cpu  100 0 100 800 0 0 0
+cpu0 100 0 100 800 0 0 0
+
+@@SM:net1
+Inter-|   Receive                                                |  Transmit
+ face |bytes    packets errs drop fifo frame compressed multicast|bytes    packets errs drop fifo colls carrier compressed
+    lo:     100       1    0    0    0     0          0         0      100       1    0    0    0     0       0          0
+  eth0:4294967000    9000    0    0    0     0          0         0   400000    4000    0    0    0     0       0          0
+
+@@SM:up2
+102.00 51.00
+
+@@SM:cpu2
+cpu  150 0 150 1000 0 0 0
+
+@@SM:net2
+Inter-|   Receive                                                |  Transmit
+ face |bytes    packets errs drop fifo frame compressed multicast|bytes    packets errs drop fifo colls carrier compressed
+    lo:     100       1    0    0    0     0          0         0      100       1    0    0    0     0       0          0
+  eth0:     200    9001    0    0    0     0          0         0   400200    4001    0    0    0     0       0          0
+
+@@SM:procs
+
+@@SM:end

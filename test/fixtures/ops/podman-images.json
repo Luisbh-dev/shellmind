@@ -1,0 +1,129 @@
+[
+    {
+        "Id": "f1642e0cdf73be7f042a3b20a4e0fab18fc81d7c53576c870f43b0039b5b8514",
+        "ParentId": "320994c3b997e2ec6433f717f153e108023c5bec8fefa8d76b83451d16d05ea8",
+        "RepoTags": null,
+        "RepoDigests": [
+            "localhost/demo-app@sha256:f409a3f3c95acb86b08829daeaa97cf064426b5476976d0a941063650fa65f6c"
+        ],
+        "Size": 8711017,
+        "SharedSize": 0,
+        "VirtualSize": 8711017,
+        "Labels": null,
+        "Containers": 0,
+        "Digest": "sha256:f409a3f3c95acb86b08829daeaa97cf064426b5476976d0a941063650fa65f6c",
+        "History": [
+            "localhost/demo-app:latest"
+        ],
+        "Names": [
+            "localhost/demo-app:latest"
+        ],
+        "Created": 1792865202,
+        "CreatedAt": "2026-10-24T18:06:42Z"
+    },
+    {
+        "Id": "a00059468f1ff31cb6e886950c88b1d95f44a30fa614795643e3fa65e922e11e",
+        "ParentId": "320994c3b997e2ec6433f717f153e108023c5bec8fefa8d76b83451d16d05ea8",
+        "RepoTags": null,
+        "RepoDigests": [],
+        "Size": 8709993,
+        "SharedSize": 0,
+        "VirtualSize": 8709993,
+        "Labels": null,
+        "Containers": 0,
+        "Dangling": true,
+        "Digest": "sha256:f3a2d6e01887f67e09469b78adb26e99f1bb961857c8cbf2c6badfa247774720",
+        "History": [
+            "localhost/demo-app:latest"
+        ],
+        "Created": 1792865200,
+        "CreatedAt": "2026-10-24T18:06:40Z"
+    },
+    {
+        "Id": "320994c3b997e2ec6433f717f153e108023c5bec8fefa8d76b83451d16d05ea8",
+        "ParentId": "",
+        "RepoTags": null,
+        "RepoDigests": [
+            "docker.io/library/alpine@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6",
+            "docker.io/library/alpine@sha256:d56c381f961d307a21b3ca004cf1e3910f106644aefb1f43e654c8a56c4fd395",
+            "localhost/mine@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6",
+            "localhost/mine@sha256:d56c381f961d307a21b3ca004cf1e3910f106644aefb1f43e654c8a56c4fd395"
+        ],
+        "Size": 8715873,
+        "SharedSize": 0,
+        "VirtualSize": 8715873,
+        "Labels": null,
+        "Containers": 1,
+        "Digest": "sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6",
+        "History": [
+            "docker.io/library/alpine:3",
+            "docker.io/library/alpine:latest",
+            "localhost/mine:1"
+        ],
+        "Names": [
+            "localhost/mine:1",
+            "docker.io/library/alpine:latest",
+            "docker.io/library/alpine:3"
+        ],
+        "Created": 1789677440,
+        "CreatedAt": "2026-09-17T20:37:20Z"
+    },
+    {
+        "Id": "320994c3b997e2ec6433f717f153e108023c5bec8fefa8d76b83451d16d05ea8",
+        "ParentId": "",
+        "RepoTags": null,
+        "RepoDigests": [
+            "docker.io/library/alpine@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6",
+            "docker.io/library/alpine@sha256:d56c381f961d307a21b3ca004cf1e3910f106644aefb1f43e654c8a56c4fd395",
+            "localhost/mine@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6",
+            "localhost/mine@sha256:d56c381f961d307a21b3ca004cf1e3910f106644aefb1f43e654c8a56c4fd395"
+        ],
+        "Size": 8715873,
+        "SharedSize": 0,
+        "VirtualSize": 8715873,
+        "Labels": null,
+        "Containers": 1,
+        "Digest": "sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6",
+        "History": [
+            "docker.io/library/alpine:3",
+            "docker.io/library/alpine:latest",
+            "localhost/mine:1"
+        ],
+        "Names": [
+            "localhost/mine:1",
+            "docker.io/library/alpine:latest",
+            "docker.io/library/alpine:3"
+        ],
+        "Created": 1789677440,
+        "CreatedAt": "2026-09-17T20:37:20Z"
+    },
+    {
+        "Id": "320994c3b997e2ec6433f717f153e108023c5bec8fefa8d76b83451d16d05ea8",
+        "ParentId": "",
+        "RepoTags": null,
+        "RepoDigests": [
+            "docker.io/library/alpine@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6",
+            "docker.io/library/alpine@sha256:d56c381f961d307a21b3ca004cf1e3910f106644aefb1f43e654c8a56c4fd395",
+            "localhost/mine@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6",
+            "localhost/mine@sha256:d56c381f961d307a21b3ca004cf1e3910f106644aefb1f43e654c8a56c4fd395"
+        ],
+        "Size": 8715873,
+        "SharedSize": 0,
+        "VirtualSize": 8715873,
+        "Labels": null,
+        "Containers": 1,
+        "Digest": "sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6",
+        "History": [
+            "docker.io/library/alpine:3",
+            "docker.io/library/alpine:latest",
+            "localhost/mine:1"
+        ],
+        "Names": [
+            "localhost/mine:1",
+            "docker.io/library/alpine:latest",
+            "docker.io/library/alpine:3"
+        ],
+        "Created": 1789677440,
+        "CreatedAt": "2026-09-17T20:37:20Z"
+    }
+]

@@ -1,0 +1,65 @@
+
+@@SM:host
+web-01
+
+@@SM:os
+PRETTY_NAME="Ubuntu 22.04.4 LTS"
+
+@@SM:kernel
+5.15.0-105-generic
+
+@@SM:loadavg
+2.60 1.48 0.90 2/412 123456
+
+@@SM:meminfo
+MemTotal:       16374584 kB
+MemFree:         1203004 kB
+MemAvailable:    9876543 kB
+Buffers:          312456 kB
+Cached:          7654321 kB
+SwapTotal:       4194300 kB
+SwapFree:        4000000 kB
+SReclaimable:     456789 kB
+
+@@SM:pagesize
+4096
+
+@@SM:virtualnet
+docker0
+lo
+
+@@SM:mounts
+/dev/mapper/ubuntu--vg-ubuntu--lv / ext4
+/dev/sda2 /boot ext4
+/dev/sdb1 /data xfs
+
+@@SM:df
+Filesystem                        1024-blocks      Used Available Capacity Mounted on
+/dev/mapper/ubuntu--vg-ubuntu--lv   101590008  93463000   7034000      93% /
+/dev/sda2                             1992552    264048   1607264      15% /boot
+/dev/sdb1                           524032000 312345678 211686322      60% /data
+
+@@SM:failed
+1
+
+@@SM:users
+2
+
+@@SM:up1
+1234567.89 4567890.12
+
+@@SM:up2
+1234567.89 4567890.12
+
+@@SM:cpu1
+cpu  4705 150 1120 16250 520 0 30 0 0 0
+cpu0 2352 75 560 8125 260 0 15 0 0 0
+cpu1 2353 75 560 8125 260 0 15 0 0 0
+
+@@SM:reboot
+yes
+
+@@SM:updates
+apt 12 5 1792000000
+
+@@SM:end

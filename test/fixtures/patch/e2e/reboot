@@ -1,0 +1,4 @@
+#!/bin/sh
+# A container cannot reboot: this asks its PID 1 (init.sh) to end the
+# container, which Docker then starts again.
+kill -USR1 1

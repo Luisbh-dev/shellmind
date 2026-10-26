@@ -1,0 +1,99 @@
+
+@@SM:host
+web-01
+
+@@SM:os
+PRETTY_NAME="Ubuntu 22.04.4 LTS"
+
+@@SM:kernel
+5.15.0-105-generic
+
+@@SM:loadavg
+0.52 0.48 0.40 2/412 123456
+
+@@SM:meminfo
+MemTotal:       16374584 kB
+MemFree:         1203004 kB
+MemAvailable:    9876543 kB
+Buffers:          312456 kB
+Cached:          7654321 kB
+SwapTotal:       4194300 kB
+SwapFree:        4000000 kB
+SReclaimable:     456789 kB
+
+@@SM:pagesize
+4096
+
+@@SM:virtualnet
+br-5f6e7d8c9b0a
+docker0
+lo
+veth1a2b3c4
+
+@@SM:mounts
+/dev/mapper/ubuntu--vg-ubuntu--lv / ext4
+/dev/sda2 /boot ext4
+/dev/sda1 /boot/efi vfat
+/dev/sdb1 /data xfs
+/dev/sdb1 /srv/data xfs
+/dev/sdc1 /mnt/backup\040disk ext4
+tank /tank zfs
+tank/backups /tank/backups zfs
+tank/media /tank/media zfs
+/dev/mapper/ubuntu--vg-ubuntu--lv /var/lib/docker/plugins ext4
+
+@@SM:df
+Filesystem                        1024-blocks      Used Available Capacity Mounted on
+/dev/mapper/ubuntu--vg-ubuntu--lv   101590008  45678912  50709624      48% /
+/dev/sda2                             1992552    264048   1607264      15% /boot
+/dev/sda1                             1098632      6216   1092416       1% /boot/efi
+/dev/sdb1                           524032000 312345678 211686322      60% /data
+/dev/sdb1                           524032000 312345678 211686322      60% /srv/data
+/dev/sdc1                           103081248  10308124  87515616      11% /mnt/backup disk
+tank                                900000128       128 900000000       1% /tank
+tank/backups                       1250000000 350000000 900000000      28% /tank/backups
+tank/media                         1100000000 200000000 900000000      19% /tank/media
+
+@@SM:failed
+1
+
+@@SM:users
+2
+
+@@SM:up1
+1234567.89 4567890.12
+
+@@SM:cpu1
+cpu  4705 150 1120 16250 520 0 30 0 0 0
+cpu0 2352 75 560 8125 260 0 15 0 0 0
+cpu1 2353 75 560 8125 260 0 15 0 0 0
+
+@@SM:net1
+Inter-|   Receive                                                |  Transmit
+ face |bytes    packets errs drop fifo frame compressed multicast|bytes    packets errs drop fifo colls carrier compressed
+    lo: 9000000   90000    0    0    0     0          0         0  9000000   90000    0    0    0     0       0          0
+  eth0: 1000000    9000    0    0    0     0          0         0   400000    4000    0    0    0     0       0          0
+docker0:  500000    5000    0    0    0     0          0         0   300000    3000    0    0    0     0       0          0
+veth1a2b3c4:  500000    5000    0    0    0     0          0         0   300000    3000    0    0    0     0       0          0
+
+@@SM:up2
+1234568.89 4567892.12
+
+@@SM:cpu2
+cpu  4805 150 1170 16330 540 0 30 0 0 0
+
+@@SM:net2
+Inter-|   Receive                                                |  Transmit
+ face |bytes    packets errs drop fifo frame compressed multicast|bytes    packets errs drop fifo colls carrier compressed
+    lo: 9900000   99000    0    0    0     0          0         0  9900000   99000    0    0    0     0       0          0
+  eth0: 1500000   12000    0    0    0     0          0         0   650000    6000    0    0    0     0       0          0
+docker0:  700000    7000    0    0    0     0          0         0   400000    4000    0    0    0     0       0          0
+veth1a2b3c4:  700000    7000    0    0    0     0          0         0   400000    4000    0    0    0     0       0          0
+
+@@SM:procs
+1234 100 51200 java
+2345 25 2048 tmux: server
+3456 0 300000 postgres
+1235 0 1100 (sd-pam)
+
+@@SM:end

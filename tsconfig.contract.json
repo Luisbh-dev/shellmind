@@ -1,0 +1,18 @@
+{
+  "extends": "./tsconfig.json",
+  // Contract tests (test/contract): UI modules from src/ (DOM, Vite, aliases)
+  // driven against the backend in the same Node process.
+  "compilerOptions": {
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+    "types": ["node", "vite/client", "@testing-library/jest-dom/vitest"],
+    "noEmit": true,
+    "paths": {
+      "@/*": ["./src/*"],
+      "@shared/*": ["./shared/*"]
+    }
+  },
+  "include": ["test/contract/**/*.ts", "test/contract/**/*.tsx"]
+}

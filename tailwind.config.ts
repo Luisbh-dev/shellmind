@@ -1,45 +1,94 @@
+import typography from "@tailwindcss/typography";
 import type { Config } from "tailwindcss";
+import defaultTheme from "tailwindcss/defaultTheme";
+import plugin from "tailwindcss/plugin";
+import { INK_SHADES, SHADES, THEMED_HUES, themeStylesheet } from "./src/features/appearance/palette";
+
+// Colours are CSS custom properties set per theme and accent (see
+// src/features/appearance/palette.ts), so the classes stay the same in every
+// theme: `text-zinc-100` is strong text, `bg-white/5` a hover tint, and so on.
+const token = (name: string) => `rgb(var(--c-${name}) / <alpha-value>)`;
+const scale = (name: string, shades: readonly number[]) =>
+  Object.fromEntries(shades.map((shade) => [shade, token(`${name}-${shade}`)]));
+// The overlay colours scale the alpha of the class by a per-theme factor.
+const scaled = (name: string, factor: string) => `rgb(var(--c-${name}) / calc(<alpha-value> * var(--${factor}, 1)))`;
+
+// The density (Settings → Appearance) scales spacing in rem by --density:
+// gaps and stacks in both directions, paddings and margins only vertically.
+// Compact rows get denser while horizontal insets, which icons inside inputs
+// and table columns line up with, stay put. Widths, heights and font sizes
+// never change.
+const dense = (value: string) => (value.endsWith("rem") ? `calc(${value} * var(--density, 1))` : value);
+const densitySpacing = Object.fromEntries(Object.entries(defaultTheme.spacing).map(([key, value]) => [key, dense(value)]));
+
+// Tailwind's padding and margin utilities (same names, groups and cascade
+// order; the core plugins are off) with the vertical sides following the
+// density.
+const VERTICAL = new Set(["padding-top", "padding-bottom", "margin-top", "margin-bottom"]);
+type SideGroup = Array<[prefix: string, properties: string[]]>;
+const sides = (p: string, property: string): SideGroup[] => [
+  [[p, [`${property}-top`, `${property}-right`, `${property}-bottom`, `${property}-left`]]],
+  [[`${p}x`, [`${property}-left`, `${property}-right`]], [`${p}y`, [`${property}-top`, `${property}-bottom`]]],
+  [
+    [`${p}s`, [`${property}-inline-start`]], [`${p}e`, [`${property}-inline-end`]], [`${p}t`, [`${property}-top`]],
+    [`${p}r`, [`${property}-right`]], [`${p}b`, [`${property}-bottom`]], [`${p}l`, [`${property}-left`]]
+  ]
+];
+const densitySides = (property: "padding" | "margin", prefix: string) =>
+  plugin(({ matchUtilities, theme }) => {
+    for (const group of sides(prefix, property)) {
+      matchUtilities(
+        Object.fromEntries(group.map(([name, properties]) => [
+          name,
+          (value: string) => Object.fromEntries(properties.map((side) => [side, VERTICAL.has(side) ? dense(value) : value]))
+        ])),
+        { values: theme(property), supportsNegativeValues: property === "margin" }
+      );
+    }
+  });
 
 const config: Config = {
   content: [
     "./src/**/*.{js,ts,jsx,tsx}",
     "./index.html"
   ],
+  corePlugins: { padding: false, margin: false },
   theme: {
+    gap: densitySpacing,
+    space: densitySpacing,
     extend: {
       colors: {
         // Layered surfaces — from deepest background up to elevated panels.
-        ink: {
-          900: "#08090c",
-          850: "#0b0d11",
-          800: "#0f1115",
-          750: "#13161c",
-          700: "#181b22",
-          650: "#1d212a",
-          600: "#242935"
-        },
-        // Primary brand accent (teal/cyan).
-        brand: {
-          50: "#effdfb",
-          100: "#cffcf6",
-          200: "#9ff7ee",
-          300: "#5eeae0",
-          400: "#2dd4cb",
-          500: "#14b8b0",
-          600: "#0b9390",
-          700: "#0e7472",
-          800: "#115d5d",
-          900: "#134d4e"
-        }
+        ink: scale("ink", INK_SHADES),
+        // The accent colour chosen in Settings → Appearance (teal by default).
+        brand: scale("brand", SHADES),
+        "on-brand": token("on-brand"),
+        // Keyboard focus indicators (palette.ts focusRingColor).
+        focus: token("focus-ring"),
+        zinc: scale("zinc", SHADES),
+        ...Object.fromEntries(THEMED_HUES.map((hue) => [hue, scale(hue, SHADES)])),
+        white: scaled("white", "tint-boost"),
+        black: scaled("black", "well-scale"),
+        scrim: scaled("scrim", "scrim-scale"),
+        // The same in every theme (text on solid status colours).
+        fixed: { white: "#ffffff", black: "#08090c" }
       },
+      // Inter and JetBrains Mono are bundled (main.tsx), so every OS renders
+      // the same fonts; the fallbacks only cover a failed load. Mono text is
+      // commands, paths and output people read and copy character by
+      // character: no ligatures (JetBrains Mono draws `--` as a dash and
+      // `===` as a double bar). Applies to font-mono and to code/pre/kbd.
       fontFamily: {
-        sans: ["Inter", "-apple-system", "BlinkMacSystemFont", "Segoe UI", "sans-serif"],
-        mono: ["'JetBrains Mono'", "ui-monospace", "SFMono-Regular", "Menlo", "Monaco", "'Courier New'", "monospace"]
+        sans: ["'Inter Variable'", "Inter", "-apple-system", "BlinkMacSystemFont", "'Segoe UI'", "sans-serif"],
+        mono: [
+          ["'JetBrains Mono Variable'", "'JetBrains Mono'", "'Cascadia Mono'", "Consolas", "SFMono-Regular", "Menlo", "Monaco", "monospace"],
+          { fontFeatureSettings: "'calt' 0, 'liga' 0" }
+        ]
       },
       boxShadow: {
-        glow: "0 0 0 1px rgba(45,212,203,0.18), 0 8px 30px -8px rgba(20,184,176,0.35)",
-        panel: "0 18px 48px -16px rgba(0,0,0,0.65)",
-        soft: "0 8px 24px -12px rgba(0,0,0,0.5)"
+        glow: "0 0 0 1px rgb(var(--c-brand-400) / 0.18), 0 8px 30px -8px rgb(var(--c-brand-500) / 0.35)",
+        panel: "var(--shadow-panel)",
+        soft: "var(--shadow-soft)"
       },
       keyframes: {
         "fade-in": {
@@ -71,7 +120,10 @@ const config: Config = {
     }
   },
   plugins: [
-    require('@tailwindcss/typography'),
+    typography,
+    plugin(({ addBase }) => addBase(themeStylesheet())),
+    densitySides("margin", "m"),
+    densitySides("padding", "p"),
   ],
 };
 export default config;

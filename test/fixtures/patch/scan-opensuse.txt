@@ -1,0 +1,57 @@
+
+@@SM:uid
+0
+
+@@SM:sudo
+
+@@SM:manager
+zypper
+
+@@SM:busy
+
+@@SM:metadata
+1792886387
+
+@@SM:last
+1792886509
+
+@@SM:reboot
+
+@@SM:rebootpkgs
+
+@@SM:needrestart
+
+@@SM:restarting
+
+@@SM:updates
+Warning: Repository 'Update repository of openSUSE Backports' metadata expired since 2026-07-10 11:19:15 UTC.
+Warning: Repository 'Main Update Repository' metadata expired since 2026-10-13 22:33:04 UTC.
+
+
+S  | Repository                                                   | Name     | Current Version      | Available Version    | Arch
+---+--------------------------------------------------------------+----------+----------------------+----------------------+-------
+v  | Update repository with updates from SUSE Linux Enterprise 15 | curl     | 8.14.1-150600.4.28.1 | 8.14.1-150600.4.40.1 | x86_64
+v  | Update repository with updates from SUSE Linux Enterprise 15 | libcurl4 | 8.14.1-150600.4.28.1 | 8.14.1-150600.4.40.1 | x86_64
+@@rc 0
+
+@@SM:security
+Warning: Repository 'Update repository of openSUSE Backports' metadata expired since 2026-07-10 11:19:15 UTC.
+Warning: Repository 'Main Update Repository' metadata expired since 2026-10-13 22:33:04 UTC.
+
+
+
+Repository                                                   | Name                        | Category | Severity  | Interactive | Status | Since      | Summary
+-------------------------------------------------------------+-----------------------------+----------+-----------+-------------+--------+------------+-------------------------
+Update repository with updates from SUSE Linux Enterprise 15 | openSUSE-SLE-15.6-2025-4236 | security | moderate  | ---         | needed | 2026-10-25 | Security update for curl
+Update repository with updates from SUSE Linux Enterprise 15 | openSUSE-SLE-15.6-2026-50   | security | moderate  | ---         | needed | 2026-10-25 | Security update for curl
+Update repository with updates from SUSE Linux Enterprise 15 | openSUSE-SLE-15.6-2026-77   | security | moderate  | ---         | needed | 2026-10-25 | Security update for curl
+Update repository with updates from SUSE Linux Enterprise 15 | openSUSE-SLE-15.6-2026-885  | security | important | ---         | needed | 2026-10-25 | Security update for curl
+
+4 patches needed (4 security patches)
+
+@@rc 0
+
+@@SM:installed
+
+@@SM:end
+

@@ -1,11 +1,14 @@
 {
   "extends": "./tsconfig.json",
   "compilerOptions": {
-    "module": "commonjs",
-    "target": "es2019",
-    "esModuleInterop": true,
-    "skipLibCheck": true,
-    "noEmit": true
+    "lib": ["ES2022"],
+    "module": "CommonJS",
+    "moduleResolution": "node",
+    "types": ["node"],
+    "rootDir": ".",
+    "outDir": "dist-server",
+    "noEmit": false
   },
-  "include": ["server.ts", "server_clean.ts", "database.ts"]
+  "include": ["server.ts", "server/**/*.ts", "shared/**/*.ts"],
+  "exclude": ["**/*.test.ts"]
 }

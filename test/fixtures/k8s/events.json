@@ -1,0 +1,1774 @@
+{
+  "apiVersion": "v1",
+  "items": [
+    {
+      "action": "Binding",
+      "apiVersion": "v1",
+      "eventTime": "2026-10-24T23:40:40.283620Z",
+      "firstTimestamp": null,
+      "involvedObject": {
+        "apiVersion": "v1",
+        "kind": "Pod",
+        "name": "api-857679959c-qc9f7",
+        "namespace": "shop",
+        "resourceVersion": "417",
+        "uid": "2bd0cad1-3437-482c-84e6-83f5dbfd09ff"
+      },
+      "kind": "Event",
+      "lastTimestamp": null,
+      "message": "Successfully assigned shop/api-857679959c-qc9f7 to k3s",
+      "metadata": {
+        "creationTimestamp": "2026-10-24T23:40:40Z",
+        "name": "api-857679959c-qc9f7.18e19ba07e257ab1",
+        "namespace": "shop",
+        "resourceVersion": "466",
+        "uid": "2a408d6c-bcdd-4b42-82cd-36525e0d7d0b"
+      },
+      "reason": "Scheduled",
+      "reportingComponent": "default-scheduler",
+      "reportingInstance": "default-scheduler-k3s",
+      "source": {},
+      "type": "Normal"
+    },
+    {
+      "apiVersion": "v1",
+      "count": 1,
+      "eventTime": null,
+      "firstTimestamp": "2026-10-24T23:40:41Z",
+      "involvedObject": {
+        "apiVersion": "v1",
+        "fieldPath": "spec.containers{api}",
+        "kind": "Pod",
+        "name": "api-857679959c-qc9f7",
+        "namespace": "shop",
+        "resourceVersion": "459",
+        "uid": "2bd0cad1-3437-482c-84e6-83f5dbfd09ff"
+      },
+      "kind": "Event",
+      "lastTimestamp": "2026-10-24T23:40:41Z",
+      "message": "Pulling image \"busybox:1.36\"",
+      "metadata": {
+        "creationTimestamp": "2026-10-24T23:40:41Z",
+        "name": "api-857679959c-qc9f7.18e19ba0c2b328f6",
+        "namespace": "shop",
+        "resourceVersion": "483",
+        "uid": "470e3dd7-0dc1-4561-bff9-e5251aeed9dd"
+      },
+      "reason": "Pulling",
+      "reportingComponent": "kubelet",
+      "reportingInstance": "k3s",
+      "source": {
+        "component": "kubelet",
+        "host": "k3s"
+      },
+      "type": "Normal"
+    },
+    {
+      "apiVersion": "v1",
+      "count": 1,
+      "eventTime": null,
+      "firstTimestamp": "2026-10-24T23:40:44Z",
+      "involvedObject": {
+        "apiVersion": "v1",
+        "fieldPath": "spec.containers{api}",
+        "kind": "Pod",
+        "name": "api-857679959c-qc9f7",
+        "namespace": "shop",
+        "resourceVersion": "459",
+        "uid": "2bd0cad1-3437-482c-84e6-83f5dbfd09ff"
+      },
+      "kind": "Event",
+      "lastTimestamp": "2026-10-24T23:40:44Z",
+      "message": "Successfully pulled image \"busybox:1.36\" in 2.658s (2.658s including waiting). Image size: 2217006 bytes.",
+      "metadata": {
+        "creationTimestamp": "2026-10-24T23:40:44Z",
+        "name": "api-857679959c-qc9f7.18e19ba16126cb52",
+        "namespace": "shop",
+        "resourceVersion": "492",
+        "uid": "76603afc-a273-4800-b236-20c01b8639c1"
+      },
+      "reason": "Pulled",
+      "reportingComponent": "kubelet",
+      "reportingInstance": "k3s",
+      "source": {
+        "component": "kubelet",
+        "host": "k3s"
+      },
+      "type": "Normal"
+    },
+    {
+      "apiVersion": "v1",
+      "count": 5,
+      "eventTime": null,
+      "firstTimestamp": "2026-10-24T23:40:44Z",
+      "involvedObject": {
+        "apiVersion": "v1",
+        "fieldPath": "spec.containers{api}",
+        "kind": "Pod",
+        "name": "api-857679959c-qc9f7",
+        "namespace": "shop",
+        "resourceVersion": "459",
+        "uid": "2bd0cad1-3437-482c-84e6-83f5dbfd09ff"
+      },
+      "kind": "Event",
+      "lastTimestamp": "2026-10-24T23:42:21Z",
+      "message": "Created container api",
+      "metadata": {
+        "creationTimestamp": "2026-10-24T23:40:44Z",
+        "name": "api-857679959c-qc9f7.18e19ba17211a58e",
+        "namespace": "shop",
+        "resourceVersion": "631",
+        "uid": "e9bee10c-0e69-471c-ae2f-492653a8722e"
+      },
+      "reason": "Created",
+      "reportingComponent": "kubelet",
+      "reportingInstance": "k3s",
+      "source": {
+        "component": "kubelet",
+        "host": "k3s"
+      },
+      "type": "Normal"
+    },
+    {
+      "apiVersion": "v1",
+      "count": 5,
+      "eventTime": null,
+      "firstTimestamp": "2026-10-24T23:40:44Z",
+      "involvedObject": {
+        "apiVersion": "v1",
+        "fieldPath": "spec.containers{api}",
+        "kind": "Pod",
+        "name": "api-857679959c-qc9f7",
+        "namespace": "shop",
+        "resourceVersion": "459",
+        "uid": "2bd0cad1-3437-482c-84e6-83f5dbfd09ff"
+      },
+      "kind": "Event",
+      "lastTimestamp": "2026-10-24T23:42:21Z",
+      "message": "Started container api",
+      "metadata": {
+        "creationTimestamp": "2026-10-24T23:40:44Z",
+        "name": "api-857679959c-qc9f7.18e19ba1928cb4ac",
+        "namespace": "shop",
+        "resourceVersion": "632",
+        "uid": "de4fe9d7-ee95-4302-9253-4095cdd932cc"
+      },
+      "reason": "Started",
+      "reportingComponent": "kubelet",
+      "reportingInstance": "k3s",
+      "source": {
+        "component": "kubelet",
+        "host": "k3s"
+      },
+      "type": "Normal"
+    },
+    {
+      "apiVersion": "v1",
+      "count": 4,
+      "eventTime": null,
+      "firstTimestamp": "2026-10-24T23:40:48Z",
+      "involvedObject": {
+        "apiVersion": "v1",
+        "fieldPath": "spec.containers{api}",
+        "kind": "Pod",
+        "name": "api-857679959c-qc9f7",
+        "namespace": "shop",
+        "resourceVersion": "459",
+        "uid": "2bd0cad1-3437-482c-84e6-83f5dbfd09ff"
+      },
+      "kind": "Event",
+      "lastTimestamp": "2026-10-24T23:42:21Z",
+      "message": "Container image \"busybox:1.36\" already present on machine",
+      "metadata": {
+        "creationTimestamp": "2026-10-24T23:40:48Z",
+        "name": "api-857679959c-qc9f7.18e19ba24ca2bfd0",
+        "namespace": "shop",
+        "resourceVersion": "630",
+        "uid": "0ce8fd34-06b5-4d9d-a937-c7f7817319a0"
+      },
+      "reason": "Pulled",
+      "reportingComponent": "kubelet",
+      "reportingInstance": "k3s",
+      "source": {
+        "component": "kubelet",
+        "host": "k3s"
+      },
+      "type": "Normal"
+    },
+    {
+      "apiVersion": "v1",
+      "count": 24,
+      "eventTime": null,
+      "firstTimestamp": "2026-10-24T23:40:51Z",
+      "involvedObject": {
+        "apiVersion": "v1",
+        "fieldPath": "spec.containers{api}",
+        "kind": "Pod",
+        "name": "api-857679959c-qc9f7",
+        "namespace": "shop",
+        "resourceVersion": "459",
+        "uid": "2bd0cad1-3437-482c-84e6-83f5dbfd09ff"
+      },
+      "kind": "Event",
+      "lastTimestamp": "2026-10-24T23:45:50Z",
+      "message": "Back-off restarting failed container api in pod api-857679959c-qc9f7_shop(2bd0cad1-3437-482c-84e6-83f5dbfd09ff)",
+      "metadata": {
+        "creationTimestamp": "2026-10-24T23:40:51Z",
+        "name": "api-857679959c-qc9f7.18e19ba302a77e37",
+        "namespace": "shop",
+        "resourceVersion": "718",
+        "uid": "6b4d28ea-df66-48a3-b253-6a05b0cfd0af"
+      },
+      "reason": "BackOff",
+      "reportingComponent": "kubelet",
+      "reportingInstance": "k3s",
+      "source": {
+        "component": "kubelet",
+        "host": "k3s"
+      },
+      "type": "Warning"
+    },
+    {
+      "apiVersion": "v1",
+      "count": 1,
+      "eventTime": null,
+      "firstTimestamp": "2026-10-24T23:40:40Z",
+      "involvedObject": {
+        "apiVersion": "apps/v1",
+        "kind": "ReplicaSet",
+        "name": "api-857679959c",
+        "namespace": "shop",
+        "resourceVersion": "413",
+        "uid": "75737836-ce39-418b-8a6f-100d084b438d"
+      },
+      "kind": "Event",
+      "lastTimestamp": "2026-10-24T23:40:40Z",
+      "message": "Created pod: api-857679959c-qc9f7",
+      "metadata": {
+        "creationTimestamp": "2026-10-24T23:40:40Z",
+        "name": "api-857679959c.18e19ba0735158c1",
+        "namespace": "shop",
+        "resourceVersion": "425",
+        "uid": "c434ef0b-d235-4b41-8df7-4440808ffb8f"
+      },
+      "reason": "SuccessfulCreate",
+      "reportingComponent": "replicaset-controller",
+      "reportingInstance": "",
+      "source": {
+        "component": "replicaset-controller"
+      },
+      "type": "Normal"
+    },
+    {
+      "apiVersion": "v1",
+      "count": 1,
+      "eventTime": null,
+      "firstTimestamp": "2026-10-24T23:40:40Z",
+      "involvedObject": {
+        "apiVersion": "apps/v1",
+        "kind": "Deployment",
+        "name": "api",
+        "namespace": "shop",
+        "resourceVersion": "410",
+        "uid": "9548f41f-162e-44fb-b75b-2f4657e85392"
+      },
+      "kind": "Event",
+      "lastTimestamp": "2026-10-24T23:40:40Z",
+      "message": "Scaled up replica set api-857679959c to 1",
+      "metadata": {
+        "creationTimestamp": "2026-10-24T23:40:40Z",
+        "name": "api.18e19ba072840bc9",
+        "namespace": "shop",
+        "resourceVersion": "418",
+        "uid": "537b409d-e0fd-4379-a53f-58d6e7fe4cf9"
+      },
+      "reason": "ScalingReplicaSet",
+      "reportingComponent": "deployment-controller",
+      "reportingInstance": "",
+      "source": {
+        "component": "deployment-controller"
+      },
+      "type": "Normal"
+    },
+    {
+      "action": "Binding",
+      "apiVersion": "v1",
+      "eventTime": "2026-10-24T23:40:40.210846Z",
+      "firstTimestamp": null,
+      "involvedObject": {
+        "apiVersion": "v1",
+        "kind": "Pod",
+        "name": "broken-image-7bb45cf757-77ksv",
+        "namespace": "shop",
+        "resourceVersion": "432",
+        "uid": "e1fe781d-6b23-4fe9-b0be-e25af88b09c9"
+      },
+      "kind": "Event",
+      "lastTimestamp": null,
+      "message": "Successfully assigned shop/broken-image-7bb45cf757-77ksv to k3s",
+      "metadata": {
+        "creationTimestamp": "2026-10-24T23:40:40Z",
+        "name": "broken-image-7bb45cf757-77ksv.18e19ba079cf0801",
+        "namespace": "shop",
+        "resourceVersion": "446",
+        "uid": "f38cca4b-a769-4388-be85-e98b2f3ea5d5"
+      },
+      "reason": "Scheduled",
+      "reportingComponent": "default-scheduler",
+      "reportingInstance": "default-scheduler-k3s",
+      "source": {},
+      "type": "Normal"
+    },
+    {
+      "apiVersion": "v1",
+      "count": 4,
+      "eventTime": null,
+      "firstTimestamp": "2026-10-24T23:40:41Z",
+      "involvedObject": {
+        "apiVersion": "v1",
+        "fieldPath": "spec.containers{app}",
+        "kind": "Pod",
+        "name": "broken-image-7bb45cf757-77ksv",
+        "namespace": "shop",
+        "resourceVersion": "440",
+        "uid": "e1fe781d-6b23-4fe9-b0be-e25af88b09c9"
+      },
+      "kind": "Event",
+      "lastTimestamp": "2026-10-24T23:42:06Z",
+      "message": "Pulling image \"nginx:does-not-exist-shellmind\"",
+      "metadata": {
+        "creationTimestamp": "2026-10-24T23:40:41Z",
+        "name": "broken-image-7bb45cf757-77ksv.18e19ba0b56cb071",
+        "namespace": "shop",
+        "resourceVersion": "618",
+        "uid": "9b1fb737-fdac-4a71-92c9-b43c9322d1e2"
+      },
+      "reason": "Pulling",
+      "reportingComponent": "kubelet",
+      "reportingInstance": "k3s",
+      "source": {
+        "component": "kubelet",
+        "host": "k3s"
+      },
+      "type": "Normal"
+    },
+    {
+      "apiVersion": "v1",
+      "count": 4,
+      "eventTime": null,
+      "firstTimestamp": "2026-10-24T23:40:41Z",
+      "involvedObject": {
+        "apiVersion": "v1",
+        "fieldPath": "spec.containers{app}",
+        "kind": "Pod",
+        "name": "broken-image-7bb45cf757-77ksv",
+        "namespace": "shop",
+        "resourceVersion": "440",
+        "uid": "e1fe781d-6b23-4fe9-b0be-e25af88b09c9"
+      },
+      "kind": "Event",
+      "lastTimestamp": "2026-10-24T23:42:07Z",
+      "message": "Failed to pull image \"nginx:does-not-exist-shellmind\": rpc error: code = NotFound desc = failed to pull and unpack image \"docker.io/library/nginx:does-not-exist-shellmind\": failed to resolve reference \"docker.io/library/nginx:does-not-exist-shellmind\": docker.io/library/nginx:does-not-exist-shellmind: not found",
+      "metadata": {
+        "creationTimestamp": "2026-10-24T23:40:41Z",
+        "name": "broken-image-7bb45cf757-77ksv.18e19ba0d7f5bc78",
+        "namespace": "shop",
+        "resourceVersion": "620",
+        "uid": "5021ff07-3811-4113-bbf2-589eb50c7cc6"
+      },
+      "reason": "Failed",
+      "reportingComponent": "kubelet",
+      "reportingInstance": "k3s",
+      "source": {
+        "component": "kubelet",
+        "host": "k3s"
+      },
+      "type": "Warning"
+    },
+    {
+      "apiVersion": "v1",
+      "count": 4,
+      "eventTime": null,
+      "firstTimestamp": "2026-10-24T23:40:41Z",
+      "involvedObject": {
+        "apiVersion": "v1",
+        "fieldPath": "spec.containers{app}",
+        "kind": "Pod",
+        "name": "broken-image-7bb45cf757-77ksv",
+        "namespace": "shop",
+        "resourceVersion": "440",
+        "uid": "e1fe781d-6b23-4fe9-b0be-e25af88b09c9"
+      },
+      "kind": "Event",
+      "lastTimestamp": "2026-10-24T23:42:07Z",
+      "message": "Error: ErrImagePull",
+      "metadata": {
+        "creationTimestamp": "2026-10-24T23:40:41Z",
+        "name": "broken-image-7bb45cf757-77ksv.18e19ba0d7f858e1",
+        "namespace": "shop",
+        "resourceVersion": "621",
+        "uid": "f80a6b14-8f34-4d41-9bb3-ca781612a591"
+      },
+      "reason": "Failed",
+      "reportingComponent": "kubelet",
+      "reportingInstance": "k3s",
+      "source": {
+        "component": "kubelet",
+        "host": "k3s"
+      },
+      "type": "Warning"
+    },
+    {
+      "apiVersion": "v1",
+      "count": 20,
+      "eventTime": null,
+      "firstTimestamp": "2026-10-24T23:40:41Z",
+      "involvedObject": {
+        "apiVersion": "v1",
+        "fieldPath": "spec.containers{app}",
+        "kind": "Pod",
+        "name": "broken-image-7bb45cf757-77ksv",
+        "namespace": "shop",
+        "resourceVersion": "440",
+        "uid": "e1fe781d-6b23-4fe9-b0be-e25af88b09c9"
+      },
+      "kind": "Event",
+      "lastTimestamp": "2026-10-24T23:45:48Z",
+      "message": "Back-off pulling image \"nginx:does-not-exist-shellmind\"",
+      "metadata": {
+        "creationTimestamp": "2026-10-24T23:40:41Z",
+        "name": "broken-image-7bb45cf757-77ksv.18e19ba0ddf2b79c",
+        "namespace": "shop",
+        "resourceVersion": "716",
+        "uid": "4fcef4dc-abb6-438e-97c7-e57fee4687b9"
+      },
+      "reason": "BackOff",
+      "reportingComponent": "kubelet",
+      "reportingInstance": "k3s",
+      "source": {
+        "component": "kubelet",
+        "host": "k3s"
+      },
+      "type": "Normal"
+    },
+    {
+      "apiVersion": "v1",
+      "count": 6,
+      "eventTime": null,
+      "firstTimestamp": "2026-10-24T23:40:41Z",
+      "involvedObject": {
+        "apiVersion": "v1",
+        "fieldPath": "spec.containers{app}",
+        "kind": "Pod",
+        "name": "broken-image-7bb45cf757-77ksv",
+        "namespace": "shop",
+        "resourceVersion": "440",
+        "uid": "e1fe781d-6b23-4fe9-b0be-e25af88b09c9"
+      },
+      "kind": "Event",
+      "lastTimestamp": "2026-10-24T23:42:36Z",
+      "message": "Error: ImagePullBackOff",
+      "metadata": {
+        "creationTimestamp": "2026-10-24T23:40:41Z",
+        "name": "broken-image-7bb45cf757-77ksv.18e19ba0ddf3104a",
+        "namespace": "shop",
+        "resourceVersion": "646",
+        "uid": "f1f39650-d5c9-4cfc-8aee-1d21bfedbc95"
+      },
+      "reason": "Failed",
+      "reportingComponent": "kubelet",
+      "reportingInstance": "k3s",
+      "source": {
+        "component": "kubelet",
+        "host": "k3s"
+      },
+      "type": "Warning"
+    },
+    {
+      "apiVersion": "v1",
+      "count": 1,
+      "eventTime": null,
+      "firstTimestamp": "2026-10-24T23:40:40Z",
+      "involvedObject": {
+        "apiVersion": "apps/v1",
+        "kind": "ReplicaSet",
+        "name": "broken-image-7bb45cf757",
+        "namespace": "shop",
+        "resourceVersion": "423",
+        "uid": "0a536f23-8012-4e25-bbcf-434f5161388d"
+      },
+      "kind": "Event",
+      "lastTimestamp": "2026-10-24T23:40:40Z",
+      "message": "Created pod: broken-image-7bb45cf757-77ksv",
+      "metadata": {
+        "creationTimestamp": "2026-10-24T23:40:40Z",
+        "name": "broken-image-7bb45cf757.18e19ba07872a9b4",
+        "namespace": "shop",
+        "resourceVersion": "436",
+        "uid": "2fe50032-5bc0-43cc-a99f-d3cdc466a74a"
+      },
+      "reason": "SuccessfulCreate",
+      "reportingComponent": "replicaset-controller",
+      "reportingInstance": "",
+      "source": {
+        "component": "replicaset-controller"
+      },
+      "type": "Normal"
+    },
+    {
+      "apiVersion": "v1",
+      "count": 1,
+      "eventTime": null,
+      "firstTimestamp": "2026-10-24T23:40:40Z",
+      "involvedObject": {
+        "apiVersion": "apps/v1",
+        "kind": "Deployment",
+        "name": "broken-image",
+        "namespace": "shop",
+        "resourceVersion": "414",
+        "uid": "5549bace-1c23-4c77-b18a-a3f576b2f94d"
+      },
+      "kind": "Event",
+      "lastTimestamp": "2026-10-24T23:40:40Z",
+      "message": "Scaled up replica set broken-image-7bb45cf757 to 1",
+      "metadata": {
+        "creationTimestamp": "2026-10-24T23:40:40Z",
+        "name": "broken-image.18e19ba074aae5e8",
+        "namespace": "shop",
+        "resourceVersion": "441",
+        "uid": "c6a877c9-43c5-42a8-8652-ee71cb5688d2"
+      },
+      "reason": "ScalingReplicaSet",
+      "reportingComponent": "deployment-controller",
+      "reportingInstance": "",
+      "source": {
+        "component": "deployment-controller"
+      },
+      "type": "Normal"
+    },
+    {
+      "action": "Binding",
+      "apiVersion": "v1",
+      "eventTime": "2026-10-24T23:40:40.251279Z",
+      "firstTimestamp": null,
+      "involvedObject": {
+        "apiVersion": "v1",
+        "kind": "Pod",
+        "name": "cache-0",
+        "namespace": "shop",
+        "resourceVersion": "447",
+        "uid": "4803be20-23cb-4cf9-9768-9e32a7ea0acb"
+      },
+      "kind": "Event",
+      "lastTimestamp": null,
+      "message": "Successfully assigned shop/cache-0 to k3s",
+      "metadata": {
+        "creationTimestamp": "2026-10-24T23:40:40Z",
+        "name": "cache-0.18e19ba07c37fe05",
+        "namespace": "shop",
+        "resourceVersion": "458",
+        "uid": "69739986-9852-4f91-b289-f9458635510e"
+      },
+      "reason": "Scheduled",
+      "reportingComponent": "default-scheduler",
+      "reportingInstance": "default-scheduler-k3s",
+      "source": {},
+      "type": "Normal"
+    },
+    {
+      "apiVersion": "v1",
+      "count": 1,
+      "eventTime": null,
+      "firstTimestamp": "2026-10-24T23:40:41Z",
+      "involvedObject": {
+        "apiVersion": "v1",
+        "fieldPath": "spec.containers{cache}",
+        "kind": "Pod",
+        "name": "cache-0",
+        "namespace": "shop",
+        "resourceVersion": "451",
+        "uid": "4803be20-23cb-4cf9-9768-9e32a7ea0acb"
+      },
+      "kind": "Event",
+      "lastTimestamp": "2026-10-24T23:40:41Z",
+      "message": "Pulling image \"busybox:1.36\"",
+      "metadata": {
+        "creationTimestamp": "2026-10-24T23:40:41Z",
+        "name": "cache-0.18e19ba0b3967acc",
+        "namespace": "shop",
+        "resourceVersion": "480",
+        "uid": "d96ede42-6e86-43ab-9ff2-13c00589171a"
+      },
+      "reason": "Pulling",
+      "reportingComponent": "kubelet",
+      "reportingInstance": "k3s",
+      "source": {
+        "component": "kubelet",
+        "host": "k3s"
+      },
+      "type": "Normal"
+    },
+    {
+      "apiVersion": "v1",
+      "count": 1,
+      "eventTime": null,
+      "firstTimestamp": "2026-10-24T23:40:44Z",
+      "involvedObject": {
+        "apiVersion": "v1",
+        "fieldPath": "spec.containers{cache}",
+        "kind": "Pod",
+        "name": "cache-0",
+        "namespace": "shop",
+        "resourceVersion": "451",
+        "uid": "4803be20-23cb-4cf9-9768-9e32a7ea0acb"
+      },
+      "kind": "Event",
+      "lastTimestamp": "2026-10-24T23:40:44Z",
+      "message": "Successfully pulled image \"busybox:1.36\" in 2.891s (2.891s including waiting). Image size: 2217006 bytes.",
+      "metadata": {
+        "creationTimestamp": "2026-10-24T23:40:44Z",
+        "name": "cache-0.18e19ba15fea9a57",
+        "namespace": "shop",
+        "resourceVersion": "491",
+        "uid": "1fe51bb0-d4d3-4c00-9b32-3b87341e55f3"
+      },
+      "reason": "Pulled",
+      "reportingComponent": "kubelet",
+      "reportingInstance": "k3s",
+      "source": {
+        "component": "kubelet",
+        "host": "k3s"
+      },
+      "type": "Normal"
+    },
+    {
+      "apiVersion": "v1",
+      "count": 1,
+      "eventTime": null,
+      "firstTimestamp": "2026-10-24T23:40:44Z",
+      "involvedObject": {
+        "apiVersion": "v1",
+        "fieldPath": "spec.containers{cache}",
+        "kind": "Pod",
+        "name": "cache-0",
+        "namespace": "shop",
+        "resourceVersion": "451",
+        "uid": "4803be20-23cb-4cf9-9768-9e32a7ea0acb"
+      },
+      "kind": "Event",
+      "lastTimestamp": "2026-10-24T23:40:44Z",
+      "message": "Created container cache",
+      "metadata": {
+        "creationTimestamp": "2026-10-24T23:40:44Z",
+        "name": "cache-0.18e19ba1680ece24",
+        "namespace": "shop",
+        "resourceVersion": "495",
+        "uid": "4a7babaa-de7e-4dc6-882f-e24e584ed26d"
+      },
+      "reason": "Created",
+      "reportingComponent": "kubelet",
+      "reportingInstance": "k3s",
+      "source": {
+        "component": "kubelet",
+        "host": "k3s"
+      },
+      "type": "Normal"
+    },
+    {
+      "apiVersion": "v1",
+      "count": 1,
+      "eventTime": null,
+      "firstTimestamp": "2026-10-24T23:40:45Z",
+      "involvedObject": {
+        "apiVersion": "v1",
+        "fieldPath": "spec.containers{cache}",
+        "kind": "Pod",
+        "name": "cache-0",
+        "namespace": "shop",
+        "resourceVersion": "451",
+        "uid": "4803be20-23cb-4cf9-9768-9e32a7ea0acb"
+      },
+      "kind": "Event",
+      "lastTimestamp": "2026-10-24T23:40:45Z",
+      "message": "Started container cache",
+      "metadata": {
+        "creationTimestamp": "2026-10-24T23:40:45Z",
+        "name": "cache-0.18e19ba1a0205f8c",
+        "namespace": "shop",
+        "resourceVersion": "505",
+        "uid": "f0099c75-28a2-476a-83e4-3b021acec97c"
+      },
+      "reason": "Started",
+      "reportingComponent": "kubelet",
+      "reportingInstance": "k3s",
+      "source": {
+        "component": "kubelet",
+        "host": "k3s"
+      },
+      "type": "Normal"
+    },
+    {
+      "apiVersion": "v1",
+      "count": 1,
+      "eventTime": null,
+      "firstTimestamp": "2026-10-24T23:40:40Z",
+      "involvedObject": {
+        "apiVersion": "apps/v1",
+        "kind": "StatefulSet",
+        "name": "cache",
+        "namespace": "shop",
+        "resourceVersion": "433",
+        "uid": "dcab1961-b013-4da8-98ee-aaa954126992"
+      },
+      "kind": "Event",
+      "lastTimestamp": "2026-10-24T23:40:40Z",
+      "message": "create Pod cache-0 in StatefulSet cache successful",
+      "metadata": {
+        "creationTimestamp": "2026-10-24T23:40:40Z",
+        "name": "cache.18e19ba07b9956f1",
+        "namespace": "shop",
+        "resourceVersion": "465",
+        "uid": "f9a1f5aa-9e5a-4d6a-a2a0-f2501fd5f730"
+      },
+      "reason": "SuccessfulCreate",
+      "reportingComponent": "statefulset-controller",
+      "reportingInstance": "",
+      "source": {
+        "component": "statefulset-controller"
+      },
+      "type": "Normal"
+    },
+    {
+      "action": "Binding",
+      "apiVersion": "v1",
+      "eventTime": "2026-10-24T23:40:40.388496Z",
+      "firstTimestamp": null,
+      "involvedObject": {
+        "apiVersion": "v1",
+        "kind": "Pod",
+        "name": "migrate-n5zqt",
+        "namespace": "shop",
+        "resourceVersion": "470",
+        "uid": "604a631e-4320-454c-b0c5-1ff84ffc0b0a"
+      },
+      "kind": "Event",
+      "lastTimestamp": null,
+      "message": "Successfully assigned shop/migrate-n5zqt to k3s",
+      "metadata": {
+        "creationTimestamp": "2026-10-24T23:40:40Z",
+        "name": "migrate-n5zqt.18e19ba08465d01c",
+        "namespace": "shop",
+        "resourceVersion": "476",
+        "uid": "332aa742-545b-4306-a163-3ebcc7dacca6"
+      },
+      "reason": "Scheduled",
+      "reportingComponent": "default-scheduler",
+      "reportingInstance": "default-scheduler-k3s",
+      "source": {},
+      "type": "Normal"
+    },
+    {
+      "apiVersion": "v1",
+      "count": 1,
+      "eventTime": null,
+      "firstTimestamp": "2026-10-24T23:40:41Z",
+      "involvedObject": {
+        "apiVersion": "v1",
+        "fieldPath": "spec.containers{migrate}",
+        "kind": "Pod",
+        "name": "migrate-n5zqt",
+        "namespace": "shop",
+        "resourceVersion": "475",
+        "uid": "604a631e-4320-454c-b0c5-1ff84ffc0b0a"
+      },
+      "kind": "Event",
+      "lastTimestamp": "2026-10-24T23:40:41Z",
+      "message": "Pulling image \"busybox:1.36\"",
+      "metadata": {
+        "creationTimestamp": "2026-10-24T23:40:41Z",
+        "name": "migrate-n5zqt.18e19ba0c17dd1a0",
+        "namespace": "shop",
+        "resourceVersion": "482",
+        "uid": "6d075267-ab8b-41e0-9289-3c2e028b079a"
+      },
+      "reason": "Pulling",
+      "reportingComponent": "kubelet",
+      "reportingInstance": "k3s",
+      "source": {
+        "component": "kubelet",
+        "host": "k3s"
+      },
+      "type": "Normal"
+    },
+    {
+      "apiVersion": "v1",
+      "count": 1,
+      "eventTime": null,
+      "firstTimestamp": "2026-10-24T23:40:44Z",
+      "involvedObject": {
+        "apiVersion": "v1",
+        "fieldPath": "spec.containers{migrate}",
+        "kind": "Pod",
+        "name": "migrate-n5zqt",
+        "namespace": "shop",
+        "resourceVersion": "475",
+        "uid": "604a631e-4320-454c-b0c5-1ff84ffc0b0a"
+      },
+      "kind": "Event",
+      "lastTimestamp": "2026-10-24T23:40:44Z",
+      "message": "Successfully pulled image \"busybox:1.36\" in 2.687s (2.687s including waiting). Image size: 2217006 bytes.",
+      "metadata": {
+        "creationTimestamp": "2026-10-24T23:40:44Z",
+        "name": "migrate-n5zqt.18e19ba161a6a9be",
+        "namespace": "shop",
+        "resourceVersion": "494",
+        "uid": "2d8cf075-f0fb-4a11-8e45-eb105d9701b7"
+      },
+      "reason": "Pulled",
+      "reportingComponent": "kubelet",
+      "reportingInstance": "k3s",
+      "source": {
+        "component": "kubelet",
+        "host": "k3s"
+      },
+      "type": "Normal"
+    },
+    {
+      "apiVersion": "v1",
+      "count": 1,
+      "eventTime": null,
+      "firstTimestamp": "2026-10-24T23:40:44Z",
+      "involvedObject": {
+        "apiVersion": "v1",
+        "fieldPath": "spec.containers{migrate}",
+        "kind": "Pod",
+        "name": "migrate-n5zqt",
+        "namespace": "shop",
+        "resourceVersion": "475",
+        "uid": "604a631e-4320-454c-b0c5-1ff84ffc0b0a"
+      },
+      "kind": "Event",
+      "lastTimestamp": "2026-10-24T23:40:44Z",
+      "message": "Created container migrate",
+      "metadata": {
+        "creationTimestamp": "2026-10-24T23:40:44Z",
+        "name": "migrate-n5zqt.18e19ba170d4d724",
+        "namespace": "shop",
+        "resourceVersion": "497",
+        "uid": "2255813c-ce08-48ff-8864-1777516e1fda"
+      },
+      "reason": "Created",
+      "reportingComponent": "kubelet",
+      "reportingInstance": "k3s",
+      "source": {
+        "component": "kubelet",
+        "host": "k3s"
+      },
+      "type": "Normal"
+    },
+    {
+      "apiVersion": "v1",
+      "count": 1,
+      "eventTime": null,
+      "firstTimestamp": "2026-10-24T23:40:45Z",
+      "involvedObject": {
+        "apiVersion": "v1",
+        "fieldPath": "spec.containers{migrate}",
+        "kind": "Pod",
+        "name": "migrate-n5zqt",
+        "namespace": "shop",
+        "resourceVersion": "475",
+        "uid": "604a631e-4320-454c-b0c5-1ff84ffc0b0a"
+      },
+      "kind": "Event",
+      "lastTimestamp": "2026-10-24T23:40:45Z",
+      "message": "Started container migrate",
+      "metadata": {
+        "creationTimestamp": "2026-10-24T23:40:45Z",
+        "name": "migrate-n5zqt.18e19ba19d447c3b",
+        "namespace": "shop",
+        "resourceVersion": "503",
+        "uid": "e0a44627-3923-497a-a70f-d56bc8e28361"
+      },
+      "reason": "Started",
+      "reportingComponent": "kubelet",
+      "reportingInstance": "k3s",
+      "source": {
+        "component": "kubelet",
+        "host": "k3s"
+      },
+      "type": "Normal"
+    },
+    {
+      "apiVersion": "v1",
+      "count": 1,
+      "eventTime": null,
+      "firstTimestamp": "2026-10-24T23:40:40Z",
+      "involvedObject": {
+        "apiVersion": "batch/v1",
+        "kind": "Job",
+        "name": "migrate",
+        "namespace": "shop",
+        "resourceVersion": "453",
+        "uid": "47e4375a-1fb9-42c9-8564-611f76181dc2"
+      },
+      "kind": "Event",
+      "lastTimestamp": "2026-10-24T23:40:40Z",
+      "message": "Created pod: migrate-n5zqt",
+      "metadata": {
+        "creationTimestamp": "2026-10-24T23:40:40Z",
+        "name": "migrate.18e19ba0824b4a78",
+        "namespace": "shop",
+        "resourceVersion": "473",
+        "uid": "a19e0916-32e3-4e40-a8bc-503f285dc36e"
+      },
+      "reason": "SuccessfulCreate",
+      "reportingComponent": "job-controller",
+      "reportingInstance": "",
+      "source": {
+        "component": "job-controller"
+      },
+      "type": "Normal"
+    },
+    {
+      "apiVersion": "v1",
+      "count": 1,
+      "eventTime": null,
+      "firstTimestamp": "2026-10-24T23:40:51Z",
+      "involvedObject": {
+        "apiVersion": "batch/v1",
+        "kind": "Job",
+        "name": "migrate",
+        "namespace": "shop",
+        "resourceVersion": "547",
+        "uid": "47e4375a-1fb9-42c9-8564-611f76181dc2"
+      },
+      "kind": "Event",
+      "lastTimestamp": "2026-10-24T23:40:51Z",
+      "message": "Job completed",
+      "metadata": {
+        "creationTimestamp": "2026-10-24T23:40:51Z",
+        "name": "migrate.18e19ba3055b7f60",
+        "namespace": "shop",
+        "resourceVersion": "551",
+        "uid": "ea5b9e8c-86ae-474d-8d76-b4fe0f46c3f2"
+      },
+      "reason": "Completed",
+      "reportingComponent": "job-controller",
+      "reportingInstance": "",
+      "source": {
+        "component": "job-controller"
+      },
+      "type": "Normal"
+    },
+    {
+      "action": "Binding",
+      "apiVersion": "v1",
+      "eventTime": "2026-10-24T23:40:40.301461Z",
+      "firstTimestamp": null,
+      "involvedObject": {
+        "apiVersion": "v1",
+        "kind": "Pod",
+        "name": "node-agent-mnfw6",
+        "namespace": "shop",
+        "resourceVersion": "456",
+        "uid": "4eb774b5-21c7-4059-a74d-45232c5e6e78"
+      },
+      "kind": "Event",
+      "lastTimestamp": null,
+      "message": "Successfully assigned shop/node-agent-mnfw6 to k3s",
+      "metadata": {
+        "creationTimestamp": "2026-10-24T23:40:40Z",
+        "name": "node-agent-mnfw6.18e19ba07f35b61e",
+        "namespace": "shop",
+        "resourceVersion": "467",
+        "uid": "9a806c35-9e83-4d29-b751-d1903747e170"
+      },
+      "reason": "Scheduled",
+      "reportingComponent": "default-scheduler",
+      "reportingInstance": "default-scheduler-k3s",
+      "source": {},
+      "type": "Normal"
+    },
+    {
+      "apiVersion": "v1",
+      "count": 1,
+      "eventTime": null,
+      "firstTimestamp": "2026-10-24T23:40:41Z",
+      "involvedObject": {
+        "apiVersion": "v1",
+        "fieldPath": "spec.containers{agent}",
+        "kind": "Pod",
+        "name": "node-agent-mnfw6",
+        "namespace": "shop",
+        "resourceVersion": "464",
+        "uid": "4eb774b5-21c7-4059-a74d-45232c5e6e78"
+      },
+      "kind": "Event",
+      "lastTimestamp": "2026-10-24T23:40:41Z",
+      "message": "Pulling image \"busybox:1.36\"",
+      "metadata": {
+        "creationTimestamp": "2026-10-24T23:40:41Z",
+        "name": "node-agent-mnfw6.18e19ba0c2b495d5",
+        "namespace": "shop",
+        "resourceVersion": "484",
+        "uid": "71b409e0-4fd1-4771-8bb5-11ff9d38149d"
+      },
+      "reason": "Pulling",
+      "reportingComponent": "kubelet",
+      "reportingInstance": "k3s",
+      "source": {
+        "component": "kubelet",
+        "host": "k3s"
+      },
+      "type": "Normal"
+    },
+    {
+      "apiVersion": "v1",
+      "count": 1,
+      "eventTime": null,
+      "firstTimestamp": "2026-10-24T23:40:44Z",
+      "involvedObject": {
+        "apiVersion": "v1",
+        "fieldPath": "spec.containers{agent}",
+        "kind": "Pod",
+        "name": "node-agent-mnfw6",
+        "namespace": "shop",
+        "resourceVersion": "464",
+        "uid": "4eb774b5-21c7-4059-a74d-45232c5e6e78"
+      },
+      "kind": "Event",
+      "lastTimestamp": "2026-10-24T23:40:44Z",
+      "message": "Successfully pulled image \"busybox:1.36\" in 2.657s (2.657s including waiting). Image size: 2217006 bytes.",
+      "metadata": {
+        "creationTimestamp": "2026-10-24T23:40:44Z",
+        "name": "node-agent-mnfw6.18e19ba161449b84",
+        "namespace": "shop",
+        "resourceVersion": "493",
+        "uid": "43fb9629-a073-4d01-88df-6c135112b8ae"
+      },
+      "reason": "Pulled",
+      "reportingComponent": "kubelet",
+      "reportingInstance": "k3s",
+      "source": {
+        "component": "kubelet",
+        "host": "k3s"
+      },
+      "type": "Normal"
+    },
+    {
+      "apiVersion": "v1",
+      "count": 1,
+      "eventTime": null,
+      "firstTimestamp": "2026-10-24T23:40:44Z",
+      "involvedObject": {
+        "apiVersion": "v1",
+        "fieldPath": "spec.containers{agent}",
+        "kind": "Pod",
+        "name": "node-agent-mnfw6",
+        "namespace": "shop",
+        "resourceVersion": "464",
+        "uid": "4eb774b5-21c7-4059-a74d-45232c5e6e78"
+      },
+      "kind": "Event",
+      "lastTimestamp": "2026-10-24T23:40:44Z",
+      "message": "Created container agent",
+      "metadata": {
+        "creationTimestamp": "2026-10-24T23:40:44Z",
+        "name": "node-agent-mnfw6.18e19ba16c2fd3a8",
+        "namespace": "shop",
+        "resourceVersion": "496",
+        "uid": "34fb7488-3ca0-49c6-b7cf-ddb27338c771"
+      },
+      "reason": "Created",
+      "reportingComponent": "kubelet",
+      "reportingInstance": "k3s",
+      "source": {
+        "component": "kubelet",
+        "host": "k3s"
+      },
+      "type": "Normal"
+    },
+    {
+      "apiVersion": "v1",
+      "count": 1,
+      "eventTime": null,
+      "firstTimestamp": "2026-10-24T23:40:45Z",
+      "involvedObject": {
+        "apiVersion": "v1",
+        "fieldPath": "spec.containers{agent}",
+        "kind": "Pod",
+        "name": "node-agent-mnfw6",
+        "namespace": "shop",
+        "resourceVersion": "464",
+        "uid": "4eb774b5-21c7-4059-a74d-45232c5e6e78"
+      },
+      "kind": "Event",
+      "lastTimestamp": "2026-10-24T23:40:45Z",
+      "message": "Started container agent",
+      "metadata": {
+        "creationTimestamp": "2026-10-24T23:40:45Z",
+        "name": "node-agent-mnfw6.18e19ba1a00c0d34",
+        "namespace": "shop",
+        "resourceVersion": "504",
+        "uid": "265c2670-67cb-4a50-a692-76fd6c604164"
+      },
+      "reason": "Started",
+      "reportingComponent": "kubelet",
+      "reportingInstance": "k3s",
+      "source": {
+        "component": "kubelet",
+        "host": "k3s"
+      },
+      "type": "Normal"
+    },
+    {
+      "apiVersion": "v1",
+      "count": 1,
+      "eventTime": null,
+      "firstTimestamp": "2026-10-24T23:40:40Z",
+      "involvedObject": {
+        "apiVersion": "apps/v1",
+        "kind": "DaemonSet",
+        "name": "node-agent",
+        "namespace": "shop",
+        "resourceVersion": "443",
+        "uid": "9bf3b109-f3dc-4f1f-b387-5bc2daea6ebd"
+      },
+      "kind": "Event",
+      "lastTimestamp": "2026-10-24T23:40:40Z",
+      "message": "Created pod: node-agent-mnfw6",
+      "metadata": {
+        "creationTimestamp": "2026-10-24T23:40:40Z",
+        "name": "node-agent.18e19ba07d5b7349",
+        "namespace": "shop",
+        "resourceVersion": "462",
+        "uid": "1bbd0af9-d192-415f-999e-27968d205eab"
+      },
+      "reason": "SuccessfulCreate",
+      "reportingComponent": "daemonset-controller",
+      "reportingInstance": "",
+      "source": {
+        "component": "daemonset-controller"
+      },
+      "type": "Normal"
+    },
+    {
+      "action": "Binding",
+      "apiVersion": "v1",
+      "eventTime": "2026-10-24T23:40:40.156490Z",
+      "firstTimestamp": null,
+      "involvedObject": {
+        "apiVersion": "v1",
+        "kind": "Pod",
+        "name": "web-64b7d74999-hfn4w",
+        "namespace": "shop",
+        "resourceVersion": "415",
+        "uid": "308ec5b8-c480-41ad-b6ad-36413df1e574"
+      },
+      "kind": "Event",
+      "lastTimestamp": null,
+      "message": "Successfully assigned shop/web-64b7d74999-hfn4w to k3s",
+      "metadata": {
+        "creationTimestamp": "2026-10-24T23:40:40Z",
+        "name": "web-64b7d74999-hfn4w.18e19ba07691ad44",
+        "namespace": "shop",
+        "resourceVersion": "439",
+        "uid": "e1f1c385-cd18-4c33-a4fe-2f740258c279"
+      },
+      "reason": "Scheduled",
+      "reportingComponent": "default-scheduler",
+      "reportingInstance": "default-scheduler-k3s",
+      "source": {},
+      "type": "Normal"
+    },
+    {
+      "apiVersion": "v1",
+      "count": 1,
+      "eventTime": null,
+      "firstTimestamp": "2026-10-24T23:40:40Z",
+      "involvedObject": {
+        "apiVersion": "v1",
+        "fieldPath": "spec.containers{nginx}",
+        "kind": "Pod",
+        "name": "web-64b7d74999-hfn4w",
+        "namespace": "shop",
+        "resourceVersion": "424",
+        "uid": "308ec5b8-c480-41ad-b6ad-36413df1e574"
+      },
+      "kind": "Event",
+      "lastTimestamp": "2026-10-24T23:40:40Z",
+      "message": "Pulling image \"nginx:1.27-alpine\"",
+      "metadata": {
+        "creationTimestamp": "2026-10-24T23:40:40Z",
+        "name": "web-64b7d74999-hfn4w.18e19ba0a2ad9f89",
+        "namespace": "shop",
+        "resourceVersion": "478",
+        "uid": "09ca92d2-639a-4404-bd53-a18afd832f60"
+      },
+      "reason": "Pulling",
+      "reportingComponent": "kubelet",
+      "reportingInstance": "k3s",
+      "source": {
+        "component": "kubelet",
+        "host": "k3s"
+      },
+      "type": "Normal"
+    },
+    {
+      "apiVersion": "v1",
+      "count": 1,
+      "eventTime": null,
+      "firstTimestamp": "2026-10-24T23:40:47Z",
+      "involvedObject": {
+        "apiVersion": "v1",
+        "fieldPath": "spec.containers{nginx}",
+        "kind": "Pod",
+        "name": "web-64b7d74999-hfn4w",
+        "namespace": "shop",
+        "resourceVersion": "424",
+        "uid": "308ec5b8-c480-41ad-b6ad-36413df1e574"
+      },
+      "kind": "Event",
+      "lastTimestamp": "2026-10-24T23:40:47Z",
+      "message": "Successfully pulled image \"nginx:1.27-alpine\" in 6.876s (6.876s including waiting). Image size: 20984244 bytes.",
+      "metadata": {
+        "creationTimestamp": "2026-10-24T23:40:47Z",
+        "name": "web-64b7d74999-hfn4w.18e19ba23c9031c9",
+        "namespace": "shop",
+        "resourceVersion": "515",
+        "uid": "9b70d680-74c7-46cf-95a6-c5d8ace75947"
+      },
+      "reason": "Pulled",
+      "reportingComponent": "kubelet",
+      "reportingInstance": "k3s",
+      "source": {
+        "component": "kubelet",
+        "host": "k3s"
+      },
+      "type": "Normal"
+    },
+    {
+      "apiVersion": "v1",
+      "count": 1,
+      "eventTime": null,
+      "firstTimestamp": "2026-10-24T23:40:47Z",
+      "involvedObject": {
+        "apiVersion": "v1",
+        "fieldPath": "spec.containers{nginx}",
+        "kind": "Pod",
+        "name": "web-64b7d74999-hfn4w",
+        "namespace": "shop",
+        "resourceVersion": "424",
+        "uid": "308ec5b8-c480-41ad-b6ad-36413df1e574"
+      },
+      "kind": "Event",
+      "lastTimestamp": "2026-10-24T23:40:47Z",
+      "message": "Created container nginx",
+      "metadata": {
+        "creationTimestamp": "2026-10-24T23:40:47Z",
+        "name": "web-64b7d74999-hfn4w.18e19ba241551207",
+        "namespace": "shop",
+        "resourceVersion": "517",
+        "uid": "00a88256-a58b-42bc-b5de-0adf750232cb"
+      },
+      "reason": "Created",
+      "reportingComponent": "kubelet",
+      "reportingInstance": "k3s",
+      "source": {
+        "component": "kubelet",
+        "host": "k3s"
+      },
+      "type": "Normal"
+    },
+    {
+      "apiVersion": "v1",
+      "count": 1,
+      "eventTime": null,
+      "firstTimestamp": "2026-10-24T23:40:48Z",
+      "involvedObject": {
+        "apiVersion": "v1",
+        "fieldPath": "spec.containers{nginx}",
+        "kind": "Pod",
+        "name": "web-64b7d74999-hfn4w",
+        "namespace": "shop",
+        "resourceVersion": "424",
+        "uid": "308ec5b8-c480-41ad-b6ad-36413df1e574"
+      },
+      "kind": "Event",
+      "lastTimestamp": "2026-10-24T23:40:48Z",
+      "message": "Started container nginx",
+      "metadata": {
+        "creationTimestamp": "2026-10-24T23:40:48Z",
+        "name": "web-64b7d74999-hfn4w.18e19ba2522cf78e",
+        "namespace": "shop",
+        "resourceVersion": "524",
+        "uid": "412f562b-663a-4ac3-a4ec-72f3d10cc0fa"
+      },
+      "reason": "Started",
+      "reportingComponent": "kubelet",
+      "reportingInstance": "k3s",
+      "source": {
+        "component": "kubelet",
+        "host": "k3s"
+      },
+      "type": "Normal"
+    },
+    {
+      "apiVersion": "v1",
+      "count": 1,
+      "eventTime": null,
+      "firstTimestamp": "2026-10-24T23:40:48Z",
+      "involvedObject": {
+        "apiVersion": "v1",
+        "fieldPath": "spec.containers{sidecar}",
+        "kind": "Pod",
+        "name": "web-64b7d74999-hfn4w",
+        "namespace": "shop",
+        "resourceVersion": "424",
+        "uid": "308ec5b8-c480-41ad-b6ad-36413df1e574"
+      },
+      "kind": "Event",
+      "lastTimestamp": "2026-10-24T23:40:48Z",
+      "message": "Container image \"busybox:1.36\" already present on machine",
+      "metadata": {
+        "creationTimestamp": "2026-10-24T23:40:48Z",
+        "name": "web-64b7d74999-hfn4w.18e19ba252452373",
+        "namespace": "shop",
+        "resourceVersion": "525",
+        "uid": "9645ea61-178d-4d3a-a5a9-e588d8fbceeb"
+      },
+      "reason": "Pulled",
+      "reportingComponent": "kubelet",
+      "reportingInstance": "k3s",
+      "source": {
+        "component": "kubelet",
+        "host": "k3s"
+      },
+      "type": "Normal"
+    },
+    {
+      "apiVersion": "v1",
+      "count": 1,
+      "eventTime": null,
+      "firstTimestamp": "2026-10-24T23:40:48Z",
+      "involvedObject": {
+        "apiVersion": "v1",
+        "fieldPath": "spec.containers{sidecar}",
+        "kind": "Pod",
+        "name": "web-64b7d74999-hfn4w",
+        "namespace": "shop",
+        "resourceVersion": "424",
+        "uid": "308ec5b8-c480-41ad-b6ad-36413df1e574"
+      },
+      "kind": "Event",
+      "lastTimestamp": "2026-10-24T23:40:48Z",
+      "message": "Created container sidecar",
+      "metadata": {
+        "creationTimestamp": "2026-10-24T23:40:48Z",
+        "name": "web-64b7d74999-hfn4w.18e19ba25acf4463",
+        "namespace": "shop",
+        "resourceVersion": "528",
+        "uid": "c7c6f147-63d3-450e-9779-2709c4c8216a"
+      },
+      "reason": "Created",
+      "reportingComponent": "kubelet",
+      "reportingInstance": "k3s",
+      "source": {
+        "component": "kubelet",
+        "host": "k3s"
+      },
+      "type": "Normal"
+    },
+    {
+      "apiVersion": "v1",
+      "count": 1,
+      "eventTime": null,
+      "firstTimestamp": "2026-10-24T23:40:48Z",
+      "involvedObject": {
+        "apiVersion": "v1",
+        "fieldPath": "spec.containers{sidecar}",
+        "kind": "Pod",
+        "name": "web-64b7d74999-hfn4w",
+        "namespace": "shop",
+        "resourceVersion": "424",
+        "uid": "308ec5b8-c480-41ad-b6ad-36413df1e574"
+      },
+      "kind": "Event",
+      "lastTimestamp": "2026-10-24T23:40:48Z",
+      "message": "Started container sidecar",
+      "metadata": {
+        "creationTimestamp": "2026-10-24T23:40:48Z",
+        "name": "web-64b7d74999-hfn4w.18e19ba26a731a9e",
+        "namespace": "shop",
+        "resourceVersion": "531",
+        "uid": "a883a0a0-4ab3-4461-a37d-14df3c207582"
+      },
+      "reason": "Started",
+      "reportingComponent": "kubelet",
+      "reportingInstance": "k3s",
+      "source": {
+        "component": "kubelet",
+        "host": "k3s"
+      },
+      "type": "Normal"
+    },
+    {
+      "action": "Binding",
+      "apiVersion": "v1",
+      "eventTime": "2026-10-24T23:40:40.188497Z",
+      "firstTimestamp": null,
+      "involvedObject": {
+        "apiVersion": "v1",
+        "kind": "Pod",
+        "name": "web-64b7d74999-xngmb",
+        "namespace": "shop",
+        "resourceVersion": "419",
+        "uid": "a0a28ba8-4536-4511-b13d-e74ae1efaf36"
+      },
+      "kind": "Event",
+      "lastTimestamp": null,
+      "message": "Successfully assigned shop/web-64b7d74999-xngmb to k3s",
+      "metadata": {
+        "creationTimestamp": "2026-10-24T23:40:40Z",
+        "name": "web-64b7d74999-xngmb.18e19ba07879fb48",
+        "namespace": "shop",
+        "resourceVersion": "437",
+        "uid": "09255f15-35ce-474d-b447-fbd0e802ca0d"
+      },
+      "reason": "Scheduled",
+      "reportingComponent": "default-scheduler",
+      "reportingInstance": "default-scheduler-k3s",
+      "source": {},
+      "type": "Normal"
+    },
+    {
+      "apiVersion": "v1",
+      "count": 1,
+      "eventTime": null,
+      "firstTimestamp": "2026-10-24T23:40:41Z",
+      "involvedObject": {
+        "apiVersion": "v1",
+        "fieldPath": "spec.containers{nginx}",
+        "kind": "Pod",
+        "name": "web-64b7d74999-xngmb",
+        "namespace": "shop",
+        "resourceVersion": "431",
+        "uid": "a0a28ba8-4536-4511-b13d-e74ae1efaf36"
+      },
+      "kind": "Event",
+      "lastTimestamp": "2026-10-24T23:40:41Z",
+      "message": "Pulling image \"nginx:1.27-alpine\"",
+      "metadata": {
+        "creationTimestamp": "2026-10-24T23:40:41Z",
+        "name": "web-64b7d74999-xngmb.18e19ba0aa3e4323",
+        "namespace": "shop",
+        "resourceVersion": "479",
+        "uid": "1d94422e-5c79-4025-8f56-13b5a850e3a5"
+      },
+      "reason": "Pulling",
+      "reportingComponent": "kubelet",
+      "reportingInstance": "k3s",
+      "source": {
+        "component": "kubelet",
+        "host": "k3s"
+      },
+      "type": "Normal"
+    },
+    {
+      "apiVersion": "v1",
+      "count": 1,
+      "eventTime": null,
+      "firstTimestamp": "2026-10-24T23:40:47Z",
+      "involvedObject": {
+        "apiVersion": "v1",
+        "fieldPath": "spec.containers{nginx}",
+        "kind": "Pod",
+        "name": "web-64b7d74999-xngmb",
+        "namespace": "shop",
+        "resourceVersion": "431",
+        "uid": "a0a28ba8-4536-4511-b13d-e74ae1efaf36"
+      },
+      "kind": "Event",
+      "lastTimestamp": "2026-10-24T23:40:47Z",
+      "message": "Successfully pulled image \"nginx:1.27-alpine\" in 6.748s (6.748s including waiting). Image size: 20984244 bytes.",
+      "metadata": {
+        "creationTimestamp": "2026-10-24T23:40:47Z",
+        "name": "web-64b7d74999-xngmb.18e19ba23c7f9445",
+        "namespace": "shop",
+        "resourceVersion": "514",
+        "uid": "73051819-b919-4b3b-a312-a4dd7ca357b4"
+      },
+      "reason": "Pulled",
+      "reportingComponent": "kubelet",
+      "reportingInstance": "k3s",
+      "source": {
+        "component": "kubelet",
+        "host": "k3s"
+      },
+      "type": "Normal"
+    },
+    {
+      "apiVersion": "v1",
+      "count": 1,
+      "eventTime": null,
+      "firstTimestamp": "2026-10-24T23:40:47Z",
+      "involvedObject": {
+        "apiVersion": "v1",
+        "fieldPath": "spec.containers{nginx}",
+        "kind": "Pod",
+        "name": "web-64b7d74999-xngmb",
+        "namespace": "shop",
+        "resourceVersion": "431",
+        "uid": "a0a28ba8-4536-4511-b13d-e74ae1efaf36"
+      },
+      "kind": "Event",
+      "lastTimestamp": "2026-10-24T23:40:47Z",
+      "message": "Created container nginx",
+      "metadata": {
+        "creationTimestamp": "2026-10-24T23:40:47Z",
+        "name": "web-64b7d74999-xngmb.18e19ba24032d72f",
+        "namespace": "shop",
+        "resourceVersion": "516",
+        "uid": "0c15ee63-9af2-40b0-93c6-58a5cf84d436"
+      },
+      "reason": "Created",
+      "reportingComponent": "kubelet",
+      "reportingInstance": "k3s",
+      "source": {
+        "component": "kubelet",
+        "host": "k3s"
+      },
+      "type": "Normal"
+    },
+    {
+      "apiVersion": "v1",
+      "count": 1,
+      "eventTime": null,
+      "firstTimestamp": "2026-10-24T23:40:48Z",
+      "involvedObject": {
+        "apiVersion": "v1",
+        "fieldPath": "spec.containers{nginx}",
+        "kind": "Pod",
+        "name": "web-64b7d74999-xngmb",
+        "namespace": "shop",
+        "resourceVersion": "431",
+        "uid": "a0a28ba8-4536-4511-b13d-e74ae1efaf36"
+      },
+      "kind": "Event",
+      "lastTimestamp": "2026-10-24T23:40:48Z",
+      "message": "Started container nginx",
+      "metadata": {
+        "creationTimestamp": "2026-10-24T23:40:48Z",
+        "name": "web-64b7d74999-xngmb.18e19ba24e21a4ed",
+        "namespace": "shop",
+        "resourceVersion": "520",
+        "uid": "ec2bf3f3-df8e-43fa-a4e2-cbd8d65e7ff6"
+      },
+      "reason": "Started",
+      "reportingComponent": "kubelet",
+      "reportingInstance": "k3s",
+      "source": {
+        "component": "kubelet",
+        "host": "k3s"
+      },
+      "type": "Normal"
+    },
+    {
+      "apiVersion": "v1",
+      "count": 1,
+      "eventTime": null,
+      "firstTimestamp": "2026-10-24T23:40:48Z",
+      "involvedObject": {
+        "apiVersion": "v1",
+        "fieldPath": "spec.containers{sidecar}",
+        "kind": "Pod",
+        "name": "web-64b7d74999-xngmb",
+        "namespace": "shop",
+        "resourceVersion": "431",
+        "uid": "a0a28ba8-4536-4511-b13d-e74ae1efaf36"
+      },
+      "kind": "Event",
+      "lastTimestamp": "2026-10-24T23:40:48Z",
+      "message": "Container image \"busybox:1.36\" already present on machine",
+      "metadata": {
+        "creationTimestamp": "2026-10-24T23:40:48Z",
+        "name": "web-64b7d74999-xngmb.18e19ba24e3773bd",
+        "namespace": "shop",
+        "resourceVersion": "522",
+        "uid": "f4b52b49-35ad-40c3-80be-9a9760bd32af"
+      },
+      "reason": "Pulled",
+      "reportingComponent": "kubelet",
+      "reportingInstance": "k3s",
+      "source": {
+        "component": "kubelet",
+        "host": "k3s"
+      },
+      "type": "Normal"
+    },
+    {
+      "apiVersion": "v1",
+      "count": 1,
+      "eventTime": null,
+      "firstTimestamp": "2026-10-24T23:40:48Z",
+      "involvedObject": {
+        "apiVersion": "v1",
+        "fieldPath": "spec.containers{sidecar}",
+        "kind": "Pod",
+        "name": "web-64b7d74999-xngmb",
+        "namespace": "shop",
+        "resourceVersion": "431",
+        "uid": "a0a28ba8-4536-4511-b13d-e74ae1efaf36"
+      },
+      "kind": "Event",
+      "lastTimestamp": "2026-10-24T23:40:48Z",
+      "message": "Created container sidecar",
+      "metadata": {
+        "creationTimestamp": "2026-10-24T23:40:48Z",
+        "name": "web-64b7d74999-xngmb.18e19ba253b460bf",
+        "namespace": "shop",
+        "resourceVersion": "526",
+        "uid": "e02b1b57-b8d1-40f3-96d1-350a25ffc13d"
+      },
+      "reason": "Created",
+      "reportingComponent": "kubelet",
+      "reportingInstance": "k3s",
+      "source": {
+        "component": "kubelet",
+        "host": "k3s"
+      },
+      "type": "Normal"
+    },
+    {
+      "apiVersion": "v1",
+      "count": 1,
+      "eventTime": null,
+      "firstTimestamp": "2026-10-24T23:40:48Z",
+      "involvedObject": {
+        "apiVersion": "v1",
+        "fieldPath": "spec.containers{sidecar}",
+        "kind": "Pod",
+        "name": "web-64b7d74999-xngmb",
+        "namespace": "shop",
+        "resourceVersion": "431",
+        "uid": "a0a28ba8-4536-4511-b13d-e74ae1efaf36"
+      },
+      "kind": "Event",
+      "lastTimestamp": "2026-10-24T23:40:48Z",
+      "message": "Started container sidecar",
+      "metadata": {
+        "creationTimestamp": "2026-10-24T23:40:48Z",
+        "name": "web-64b7d74999-xngmb.18e19ba263aaf0b8",
+        "namespace": "shop",
+        "resourceVersion": "530",
+        "uid": "d8fa8e1b-fdb6-4611-bbb4-b3a5d891c945"
+      },
+      "reason": "Started",
+      "reportingComponent": "kubelet",
+      "reportingInstance": "k3s",
+      "source": {
+        "component": "kubelet",
+        "host": "k3s"
+      },
+      "type": "Normal"
+    },
+    {
+      "apiVersion": "v1",
+      "count": 1,
+      "eventTime": null,
+      "firstTimestamp": "2026-10-24T23:40:40Z",
+      "involvedObject": {
+        "apiVersion": "apps/v1",
+        "kind": "ReplicaSet",
+        "name": "web-64b7d74999",
+        "namespace": "shop",
+        "resourceVersion": "409",
+        "uid": "7e85e02c-c3cb-4b06-babd-5050da7753fa"
+      },
+      "kind": "Event",
+      "lastTimestamp": "2026-10-24T23:40:40Z",
+      "message": "Created pod: web-64b7d74999-hfn4w",
+      "metadata": {
+        "creationTimestamp": "2026-10-24T23:40:40Z",
+        "name": "web-64b7d74999.18e19ba072e86462",
+        "namespace": "shop",
+        "resourceVersion": "421",
+        "uid": "029c22ab-f074-40cf-9e15-a73943e141e9"
+      },
+      "reason": "SuccessfulCreate",
+      "reportingComponent": "replicaset-controller",
+      "reportingInstance": "",
+      "source": {
+        "component": "replicaset-controller"
+      },
+      "type": "Normal"
+    },
+    {
+      "apiVersion": "v1",
+      "count": 1,
+      "eventTime": null,
+      "firstTimestamp": "2026-10-24T23:40:40Z",
+      "involvedObject": {
+        "apiVersion": "apps/v1",
+        "kind": "ReplicaSet",
+        "name": "web-64b7d74999",
+        "namespace": "shop",
+        "resourceVersion": "409",
+        "uid": "7e85e02c-c3cb-4b06-babd-5050da7753fa"
+      },
+      "kind": "Event",
+      "lastTimestamp": "2026-10-24T23:40:40Z",
+      "message": "Created pod: web-64b7d74999-xngmb",
+      "metadata": {
+        "creationTimestamp": "2026-10-24T23:40:40Z",
+        "name": "web-64b7d74999.18e19ba073e349b0",
+        "namespace": "shop",
+        "resourceVersion": "428",
+        "uid": "3cf102da-1407-4e06-a255-cd3d62eda50d"
+      },
+      "reason": "SuccessfulCreate",
+      "reportingComponent": "replicaset-controller",
+      "reportingInstance": "",
+      "source": {
+        "component": "replicaset-controller"
+      },
+      "type": "Normal"
+    },
+    {
+      "apiVersion": "v1",
+      "count": 1,
+      "eventTime": null,
+      "firstTimestamp": "2026-10-24T23:40:40Z",
+      "involvedObject": {
+        "apiVersion": "apps/v1",
+        "kind": "Deployment",
+        "name": "web",
+        "namespace": "shop",
+        "resourceVersion": "408",
+        "uid": "5cbe7952-07a2-4902-81f5-58995b984223"
+      },
+      "kind": "Event",
+      "lastTimestamp": "2026-10-24T23:40:40Z",
+      "message": "Scaled up replica set web-64b7d74999 to 2",
+      "metadata": {
+        "creationTimestamp": "2026-10-24T23:40:40Z",
+        "name": "web.18e19ba07072329f",
+        "namespace": "shop",
+        "resourceVersion": "411",
+        "uid": "b8a54c1a-73b7-412d-a8c4-a44eece9f52c"
+      },
+      "reason": "ScalingReplicaSet",
+      "reportingComponent": "deployment-controller",
+      "reportingInstance": "",
+      "source": {
+        "component": "deployment-controller"
+      },
+      "type": "Normal"
+    }
+  ],
+  "kind": "List",
+  "metadata": {
+    "resourceVersion": ""
+  }
+}

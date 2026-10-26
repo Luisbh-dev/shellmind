@@ -1,0 +1,220 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    # Weekly: also the Docker end-to-end suites and the macOS package.
+    - cron: "17 4 * * 1"
+
+permissions:
+  contents: read
+
+concurrency:
+  # A newer push to a pull request cancels its older run. Runs of main are not
+  # cancelled, and each event has its own group: a push must neither stop nor
+  # replace the weekly run (the only one with the macOS package and the
+  # end-to-end jobs), nor a weekly or manual run a push's.
+  group: ci-${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  verify-windows:
+    name: Verify (Windows)
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type-check
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+  verify-linux:
+    # Debian 12 (glibc 2.36) is older than what sqlite3's prebuilt Linux binary
+    # needs, so the postinstall rebuild from source is exercised; npm 12 fails
+    # the install on any install script package.json does not approve.
+    name: Verify (Debian 12, npm 12, coverage)
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    container:
+      image: node:24-bookworm
+      # tini as PID 1 reaps the process trees the tests kill.
+      options: --init
+    steps:
+      - name: Check out
+        uses: actions/checkout@v7
+
+      - name: Use npm 12
+        run: npm install -g npm@12
+
+      - name: Install dependencies
+        run: npm ci --strict-allow-scripts
+
+      - name: Type-check
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Test with coverage thresholds
+        run: npm run test:coverage
+
+      - name: Build
+        run: npm run build
+
+  test-node-22:
+    name: Test (Node 22.22)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          # The lowest version package.json supports.
+          node-version: 22.22.2
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Test
+        run: npm test
+
+  package-windows:
+    name: Package (Windows)
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Package (unpacked)
+        run: node scripts/dist.mjs --win --dir
+
+      - name: Smoke-test the packaged app
+        run: npm run smoke:packaged
+
+  package-linux:
+    # The Linux release, built as the release workflow builds it: in a Debian
+    # 11 container (`npm run dist:linux`), where sqlite3 (whose prebuilt binary
+    # needs glibc 2.38) and node-pty are compiled against glibc 2.31. The
+    # afterPack check (scripts/after-pack.mjs) fails the package when a native
+    # module needs more than that; the container smoke-tests the AppImage and
+    # the .deb.
+    name: Package (Linux, Debian 11 container)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+
+      - name: Package and smoke-test (AppImage and deb)
+        run: node scripts/dist-linux-docker.mjs --out release
+
+      - name: Keep the packages
+        uses: actions/upload-artifact@v7
+        with:
+          name: shellmind-linux-x64
+          path: |
+            release/*.AppImage
+            release/*.deb
+          if-no-files-found: error
+
+  package-macos:
+    name: Package (macOS)
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: macos-latest
+    timeout-minutes: 30
+    env:
+      # No signing identity in CI: scripts/dist.mjs signs ad hoc.
+      CSC_IDENTITY_AUTO_DISCOVERY: "false"
+    steps:
+      - name: Check out
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Package (unpacked)
+        run: node scripts/dist.mjs --mac --dir
+
+      - name: Smoke-test the packaged app
+        run: npm run smoke:packaged
+
+  e2e:
+    # OpenSSH, vsftpd and MinIO in Docker, and the built web UI in Chromium.
+    name: End-to-end
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - name: Check out
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Build
+        run: npm run build
+
+      - name: End-to-end tests
+        run: npm run test:e2e

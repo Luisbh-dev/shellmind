@@ -1,0 +1,51 @@
+libc6:
+  Installed: 2.36-9+deb12u1
+  Candidate: 2.36-9+deb12u14
+  Version table:
+     2.36-9+deb12u14 500
+        500 http://deb.debian.org/debian bookworm/main amd64 Packages
+     2.36-9+deb12u7 500
+        500 http://deb.debian.org/debian-security bookworm-security/main amd64 Packages
+ *** 2.36-9+deb12u1 100
+        100 /var/lib/dpkg/status
+perl-base:
+  Installed: 5.36.0-7
+  Candidate: 5.36.0-7+deb12u4
+  Version table:
+     5.36.0-7+deb12u4 500
+        500 http://deb.debian.org/debian-security bookworm-security/main amd64 Packages
+     5.36.0-7+deb12u3 500
+        500 http://deb.debian.org/debian bookworm/main amd64 Packages
+ *** 5.36.0-7 100
+        100 /var/lib/dpkg/status
+base-files:
+  Installed: 12.4+deb12u1
+  Candidate: 12.4+deb12u15
+  Version table:
+     12.4+deb12u15 500
+        500 http://deb.debian.org/debian bookworm/main amd64 Packages
+ *** 12.4+deb12u1 100
+        100 /var/lib/dpkg/status
+tzdata:
+  Installed: 2023c-5
+  Candidate: 2026e-0+deb12u1
+  Version table:
+     2026e-0+deb12u1 500
+        500 http://deb.debian.org/debian-security bookworm-security/main amd64 Packages
+     2026b-0+deb12u1 500
+        500 http://deb.debian.org/debian bookworm/main amd64 Packages
+     2025b-0+deb12u1 500
+        500 http://deb.debian.org/debian bookworm-updates/main amd64 Packages
+ *** 2023c-5 100
+        100 /var/lib/dpkg/status
+openssh-server:
+  Installed: 1:9.2p1-2+deb12u10
+  Candidate: 1:9.2p1-2+deb12u10
+  Version table:
+ *** 1:9.2p1-2+deb12u10 500
+        500 http://deb.debian.org/debian bookworm/main amd64 Packages
+        100 /var/lib/dpkg/status
+     1:9.2p1-2+deb12u9 500
+        500 http://deb.debian.org/debian-security bookworm-security/main amd64 Packages
+     1:9.2p1-2+deb12u7 500
+        500 http://deb.debian.org/debian bookworm-updates/main amd64 Packages

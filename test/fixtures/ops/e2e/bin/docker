@@ -1,0 +1,48 @@
+#!/bin/sh
+# docker stand-in: only root may use the "daemon" (the tests reach it with sudo -n).
+echo "docker $*" >> /tmp/ops-calls.log
+# A test creates /tmp/docker-down to simulate a stopped daemon (for everyone).
+if [ -e /tmp/docker-down ]; then
+    echo "Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?" >&2
+    exit 1
+fi
+if [ "$(id -u)" != 0 ]; then
+    echo "permission denied while trying to connect to the Docker daemon socket at unix:///var/run/docker.sock" >&2
+    exit 1
+fi
+case "$1" in
+    version)
+        echo "26.1.4" ;;
+    compose)
+        case "$2" in
+            version) echo "2.27.0" ;;
+            ls) echo '[{"Name":"web","Status":"running(1)","ConfigFiles":"/srv/web/compose.yaml"}]' ;;
+        esac ;;
+    ps)
+        echo '{"Command":"\"/docker-entrypoint.…\"","CreatedAt":"2024-05-01 10:00:00 +0000 UTC","ID":"3f4e5d6c7b8a9f0e1d2c3b4a5f6e7d8c9b0a1f2e3d4c5b6a7f8e9d0c1b2a3f4e","Image":"nginx:1.25","Labels":"com.docker.compose.project=web,com.docker.compose.service=proxy","Names":"web-proxy-1","Ports":"0.0.0.0:80->80/tcp","State":"running","Status":"Up 3 days"}'
+        echo '{"Command":"\"sh\"","CreatedAt":"2024-04-01 08:00:00 +0000 UTC","ID":"1122334455667788990011223344556677889900112233445566778899001122","Image":"alpine:3","Labels":"","Names":"old-job","Ports":"","State":"exited","Status":"Exited (1) 2 weeks ago"}' ;;
+    stats)
+        echo '{"BlockIO":"12.3MB / 4.1kB","CPUPerc":"0.12%","Container":"3f4e5d6c7b8a","ID":"3f4e5d6c7b8a","MemPerc":"0.35%","MemUsage":"27.5MiB / 7.66GiB","Name":"web-proxy-1","NetIO":"1.45MB / 2.3MB","PIDs":"5"}' ;;
+    inspect)
+        echo '[{"Id":"3f4e5d6c7b8a","Name":"/web-proxy-1","State":{"Status":"running","StartedAt":"2024-05-03T10:00:00Z"},"Config":{"Image":"nginx:1.25"}}]' ;;
+    logs)
+        echo "2024-05-06T10:00:00.000000000Z 172.18.0.1 - - \"GET / HTTP/1.1\" 200 615"
+        case " $* " in
+            *" -f "*)
+                while :; do
+                    echo "$(date '+%Y-%m-%dT%H:%M:%S') container log line"
+                    sleep 0.3
+                done ;;
+        esac ;;
+    start|stop|restart)
+        echo "$3" ;;
+    rm)
+        name=""
+        for arg in "$@"; do name="$arg"; done
+        if [ "$name" = "gone" ]; then
+            echo "Error response from daemon: No such container: gone" >&2
+            exit 1
+        fi
+        echo "$name" ;;
+esac
+exit 0

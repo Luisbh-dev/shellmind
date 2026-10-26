@@ -1,0 +1,25 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "lib": ["ES2022"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "types": ["node"],
+    "noEmit": true,
+    // scripts/*.mjs imported by the build tests: typed from their JSDoc, not checked.
+    "allowJs": true,
+    "checkJs": false
+  },
+  "include": [
+    "test/**/*.ts",
+    "server/**/*.test.ts",
+    "shared/**/*.test.ts",
+    "scripts/**/*.ts",
+    "vite.config.ts",
+    "vitest.config.ts",
+    "playwright.config.ts",
+    "tailwind.config.ts"
+  ],
+  // Checked by tsconfig.contract.json: they import UI modules too.
+  "exclude": ["test/contract/**"]
+}

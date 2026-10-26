@@ -1,0 +1,46 @@
+version: 2
+
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 10
+    # Related packages move together, so a group's PR is tested as a whole.
+    groups:
+      electron:
+        patterns: ["electron", "electron-builder", "@electron/*"]
+      test:
+        patterns: ["vitest", "@vitest/*", "@testing-library/*", "jsdom", "@playwright/test"]
+      lint:
+        patterns: ["eslint", "@eslint/*", "eslint-plugin-*", "typescript-eslint", "globals"]
+      codemirror:
+        patterns: ["@codemirror/*", "@lezer/*"]
+      xterm:
+        patterns: ["@xterm/*"]
+      aws-sdk:
+        patterns: ["@aws-sdk/*"]
+      react:
+        patterns: ["react", "react-dom", "@types/react", "@types/react-dom"]
+    ignore:
+      # Migrations of their own, planned separately: React 19, Tailwind 4, and
+      # ESLint 10 (eslint-plugin-jsx-a11y supports up to ESLint 9).
+      - dependency-name: "react"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "react-dom"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@types/react"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@types/react-dom"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "tailwindcss"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "eslint"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@eslint/js"
+        update-types: ["version-update:semver-major"]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
