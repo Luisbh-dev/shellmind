@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
+import { PROCESS_TEST_TIMEOUT_MS } from '../../test/setup/timeouts';
 import { encodedPowerShellCommand, powershellInvocation, psQuote } from '../ops/remote';
 import { INSTALL_MARKER, parseInstallOutput, parseRemoveOutput, posixInstallScript, posixRemoveScript, windowsInstallScript, windowsRemoveScript } from './install';
 import { generateEd25519 } from './keys';
@@ -81,7 +82,7 @@ describe('posixInstallScript', () => {
         fs.writeFileSync(file, `  # ${key.publicKey}\n`);
         expect(run()).toMatchObject({ status: 'installed' });
         expect(fs.readFileSync(file, 'utf8')).toBe(`  # ${key.publicKey}\n${key.publicKey}\n`);
-    });
+    }, PROCESS_TEST_TIMEOUT_MS);
 });
 
 describe('windowsInstallScript', () => {
@@ -121,7 +122,7 @@ describe('windowsInstallScript', () => {
         fs.writeFileSync(file, ` # ${key.publicKey}\r\n`);
         expect(run()?.status).toBe('installed');
         expect(fs.readFileSync(file, 'utf8')).toBe(` # ${key.publicKey}\r\n${key.publicKey}\r\n`);
-    });
+    }, PROCESS_TEST_TIMEOUT_MS);
 });
 
 // SEC-6: after a rotation the previous key is taken out of authorized_keys,
@@ -176,7 +177,7 @@ describe('removing a key from authorized_keys', () => {
         fs.writeFileSync(file, `${key.publicKey}\n`);
         expect(run()).toMatchObject({ status: 'removed', removed: 1 });
         expect(fs.readFileSync(file, 'utf8')).toBe('');
-    });
+    }, PROCESS_TEST_TIMEOUT_MS);
 
     it.skipIf(process.platform !== 'win32')('removes the key from the file sshd reads for this user, in place', () => {
         const programData = tempDir();
@@ -193,5 +194,5 @@ describe('removing a key from authorized_keys', () => {
         expect(parseRemoveOutput(exec(windowsRemoveScript(key)))).toEqual({ status: 'removed', removed: 1, file });
         expect(fs.readFileSync(file, 'utf8')).toBe(`${other.publicKey}\r\n # ${key.publicKey}\r\n`);
         expect(parseRemoveOutput(exec(windowsRemoveScript(key)))).toMatchObject({ status: 'absent' });
-    });
+    }, PROCESS_TEST_TIMEOUT_MS);
 });

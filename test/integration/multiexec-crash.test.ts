@@ -8,6 +8,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { MultiExecJob } from '../../shared/multiexec';
 import type { AuditEntry } from '../../shared/types';
 import { startSshServer, type SshHarness } from '../helpers/sshServer';
+import { PROCESS_TEST_TIMEOUT_MS } from '../setup/timeouts';
 
 // CR-01: a backend that dies while a multi-exec command runs (an uncaught
 // exception, a kill, a power cut) must leave the job history and the audit
@@ -122,5 +123,5 @@ describe('a backend killed while a multi-exec command runs', () => {
             second.child.send({ type: 'shutdown' });
             await second.exit;
         }
-    }, 90_000);
+    }, PROCESS_TEST_TIMEOUT_MS);
 });

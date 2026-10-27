@@ -2,12 +2,13 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { PROCESS_TEST_TIMEOUT_MS } from '../../test/setup/timeouts';
 import type { LocalTermHandle } from './pty';
 import { scopedCliEnv, startScopedCli } from './scopedCli';
 
 // A scoped console for `node`: every line runs `node <args>`, without a shell.
 
-vi.setConfig({ testTimeout: 20_000 });
+vi.setConfig({ testTimeout: PROCESS_TEST_TIMEOUT_MS });
 
 type Console = {
     handle: LocalTermHandle;

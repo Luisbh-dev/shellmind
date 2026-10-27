@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
+import { PROCESS_TEST_TIMEOUT_MS } from '../../test/setup/timeouts';
 import { CommandLineError } from './argv';
 import { commandSpec, killProcessTree, runCommand, spawnCommand } from './process';
 
@@ -114,5 +115,5 @@ describe('killProcessTree', () => {
         killProcessTree(parent);
         await closed;
         await waitFor(() => !isAlive(grandchild));
-    }, 20_000);
+    }, PROCESS_TEST_TIMEOUT_MS);
 });

@@ -9,7 +9,9 @@ import { bootTestServer, type TestServer } from '../helpers/testServer';
 
 // A saved local CLI preset opened through the terminal protocol (start-ssh):
 // the backend starts a scoped console for the tool instead of a shell. The
-// tool is a stand-in `kubectl` on PATH that prints the arguments it got.
+// tool is a stand-in `kubectl` that prints the arguments it got, and the only
+// tool on PATH: whether this machine has the real kubectl or gcloud (a CI
+// runner image comes with both) must not matter.
 
 vi.setConfig({ testTimeout: 30_000 });
 
@@ -87,7 +89,9 @@ beforeAll(async () => {
         fs.writeFileSync(path.join(binDir, 'kubectl'), `#!/bin/sh\nexec "${process.execPath}" "${script}" "$@"\n`, { mode: 0o755 });
     }
     originalPath = process.env[pathKey];
-    process.env[pathKey] = `${binDir}${path.delimiter}${originalPath ?? ''}`;
+    // Windows keeps System32 for taskkill, which stops a command's process tree.
+    const system = process.platform === 'win32' ? [path.join(process.env.SystemRoot ?? 'C:\\Windows', 'System32')] : [];
+    process.env[pathKey] = [binDir, ...system].join(path.delimiter);
     server = await bootTestServer();
 });
 

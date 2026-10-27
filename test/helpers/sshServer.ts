@@ -96,6 +96,16 @@ function sameBytes(a: Buffer, b: Buffer): boolean {
     return a.length === b.length && timingSafeEqual(a, b);
 }
 
+// Whether a fake host can still answer on the channel: the client has not
+// closed it (nor the host ended it). ssh2 ends the channel's output as soon as
+// the client closes it, but emits 'close' only after the 'end' of its stdin,
+// which the close causes too: a host answering on that 'end' (a script read
+// from stdin) or from a timer looks here, not for 'close'. On stderr, a write
+// after that end is an uncaught "write after end".
+export function channelOpen(channel: ServerChannel): boolean {
+    return channel.writable && channel.stderr.writable;
+}
+
 function finish(channel: ServerChannel, code: number): void {
     channel.exit(code);
     channel.end();
@@ -111,6 +121,8 @@ function builtinExec(command: string, channel: ServerChannel): void {
         finish(channel, 0);
     } else if ((match = /^sleep-ms (\d+)$/.exec(command))) {
         setTimeout(() => {
+            // Unless the client gave up meanwhile (a timeout, a cancel).
+            if (!channelOpen(channel)) return;
             channel.write('slept\n');
             finish(channel, 0);
         }, Number(match[1]));
@@ -124,6 +136,7 @@ function builtinExec(command: string, channel: ServerChannel): void {
         const bytes = Buffer.from('ñandú €', 'utf8');
         channel.write(bytes.subarray(0, 1));
         setTimeout(() => {
+            if (!channelOpen(channel)) return;
             channel.write(bytes.subarray(1));
             finish(channel, 0);
         }, 20);

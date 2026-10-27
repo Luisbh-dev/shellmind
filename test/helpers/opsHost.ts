@@ -1,4 +1,5 @@
 import type { ServerChannel } from 'ssh2';
+import { channelOpen } from './sshServer';
 
 // POWERSHELL_STDIN_COMMAND of server/ops/remote.ts, which is not imported:
 // it reads the backend configuration, which bootTestServer() sets up first.
@@ -73,10 +74,11 @@ export function createOpsHost(): OpsHost {
     let streamedBytes = 0;
 
     const reply = (channel: ServerChannel, answer: Reply | undefined) => {
-        let closed = false;
-        channel.on('close', () => { closed = true; });
         const send = () => {
-            if (closed) return;
+            // Closed by the client meanwhile, or before its script was in (a
+            // command cancelled while its channel opened): the close also ends
+            // stdin, which is what runs a script here.
+            if (!channelOpen(channel)) return;
             const { stdout = '', stderr = '', code = 0 } = answer ?? { stderr: 'ops host: no scripted answer\n', code: 127 };
             if (stdout) channel.write(stdout);
             if (stderr) channel.stderr.write(stderr);
@@ -144,13 +146,15 @@ export function createOpsHost(): OpsHost {
     };
 
     const runStream = (channel: ServerChannel, plan: StreamReply) => {
+        // A Windows stream also starts on the end of its stdin, which a client
+        // closing the channel causes too.
+        if (!channelOpen(channel)) return;
         openStreams += 1;
         if (plan.stderr) channel.stderr.write(plan.stderr);
         if (plan.flood !== undefined) {
             const chunk = plan.flood;
-            let closed = false;
             const pump = () => {
-                while (!closed) {
+                while (channelOpen(channel)) {
                     streamedBytes += chunk.length;
                     if (!channel.write(chunk)) {
                         channel.once('drain', pump);
@@ -158,15 +162,16 @@ export function createOpsHost(): OpsHost {
                     }
                 }
             };
-            channel.on('close', () => {
-                closed = true;
-                openStreams -= 1;
-            });
+            channel.on('close', () => { openStreams -= 1; });
             setImmediate(pump);
             return;
         }
         let index = 0;
         const timer = setInterval(() => {
+            if (!channelOpen(channel)) {
+                clearInterval(timer);
+                return;
+            }
             if (plan.exitCode !== undefined && index >= plan.lines.length) {
                 clearInterval(timer);
                 channel.exit(plan.exitCode);

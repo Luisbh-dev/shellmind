@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
+import { PROCESS_TEST_TIMEOUT_MS } from '../setup/timeouts';
 
 // The real entry point (server.ts) forked the way the Electron shell forks the
 // compiled one: with an IPC channel, reporting {type:'ready'|'fatal'}.
@@ -76,7 +77,7 @@ describe('backend startup under a parent process', () => {
 
         backend.child.send({ type: 'shutdown' });
         expect(await backend.exit).toBe(0);
-    }, 60_000);
+    }, PROCESS_TEST_TIMEOUT_MS);
 
     it('reports a taken port as fatal and exits non-zero instead of lingering', async () => {
         const blocker = net.createServer();
@@ -94,7 +95,7 @@ describe('backend startup under a parent process', () => {
         } finally {
             blocker.close();
         }
-    }, 60_000);
+    }, PROCESS_TEST_TIMEOUT_MS);
 
     // BC-10: a failure after the database opened used to be an unhandled
     // rejection, and the process then ended with code 0 without a word.
@@ -106,7 +107,7 @@ describe('backend startup under a parent process', () => {
         expect(message).toEqual({ type: 'fatal', message: expect.stringMatching(/^Could not start: SERVE_WEB is set but no web build was found/) });
         expect(await backend.exit).toBe(1);
         expect(backend.stderr()).not.toContain('Unhandled promise rejection');
-    }, 60_000);
+    }, PROCESS_TEST_TIMEOUT_MS);
 
     it('logs an unhandled rejection but exits fatally on an uncaught exception', async () => {
         const backend = startBackend({}, 'test/fixtures/crashingBackend.ts');
@@ -115,5 +116,5 @@ describe('backend startup under a parent process', () => {
         expect(await backend.exit).toBe(1);
         expect(backend.stderr()).toContain('Unhandled promise rejection');
         expect(backend.stderr()).toContain('ignored rejection');
-    }, 60_000);
+    }, PROCESS_TEST_TIMEOUT_MS);
 });

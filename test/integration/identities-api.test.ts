@@ -3,7 +3,7 @@ import type { ServerChannel } from 'ssh2';
 import type { IdentitySummary, InstallEvent } from '../../shared/identities';
 import type { AuditEntry, ServerSummary } from '../../shared/types';
 import { startFakeAgent, type FakeAgent } from '../helpers/fakeAgent';
-import { generateKeyPair, startSshServer, type HarnessUser, type SshHarness } from '../helpers/sshServer';
+import { channelOpen, generateKeyPair, startSshServer, type HarnessUser, type SshHarness } from '../helpers/sshServer';
 import { bootTestServer, type TestServer } from '../helpers/testServer';
 
 // W7-S2 identities end to end: the API, how servers take their credentials
@@ -101,7 +101,10 @@ beforeAll(async () => {
             if (command !== 'sh -s') return false;
             let script = '';
             channel.on('data', (chunk: Buffer) => { script += chunk.toString('utf8'); });
-            channel.on('end', () => onInstallScript(script, channel));
+            // Not when the client closed the channel instead (it gave up).
+            channel.on('end', () => {
+                if (channelOpen(channel)) onInstallScript(script, channel);
+            });
             return true;
         },
     });

@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { ServerChannel } from 'ssh2';
-import { generateKeyPair, HARNESS_OS, startSshServer, type SshHarness, type SshHarnessOptions } from '../helpers/sshServer';
+import { channelOpen, generateKeyPair, HARNESS_OS, startSshServer, type SshHarness, type SshHarnessOptions } from '../helpers/sshServer';
 import { openTempDatabase } from '../helpers/tempDatabase';
 
 // The SSH pool and exec helpers against the in-process ssh2 test server.
@@ -432,6 +432,8 @@ describe('exec', () => {
             let left = Number(match[1]);
             const pump = () => {
                 while (left > 0) {
+                    // The client closes the channel at its cap.
+                    if (!channelOpen(channel)) return;
                     left -= chunk.length;
                     if (!channel.write(chunk)) {
                         channel.once('drain', pump);
@@ -441,7 +443,6 @@ describe('exec', () => {
                 channel.exit(0);
                 channel.end();
             };
-            channel.on('close', () => { left = 0; });
             pump();
             return true;
         };

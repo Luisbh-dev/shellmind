@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { PATCH_MODES, type PatchOptions } from "../../shared/patch";
+import { PROCESS_TEST_TIMEOUT_MS } from "../../test/setup/timeouts";
 import { FLEET_WINDOWS_SCRIPT, LINUX_REBOOT, WINDOWS_REBOOT_PENDING } from "../fleet/probe";
 import { APT_SECURITY_VERSIONS_FUNCTION, BOOT_CHECK_SCRIPT, LINUX_SCAN_SCRIPT, REBOOT_SCRIPT, buildApplyScript, describeRun, planCommands, windowsScanScript } from "./scripts";
 
@@ -24,7 +25,7 @@ describe("patch scripts", () => {
             expect(result.stderr).toBe("");
             expect(result.status).toBe(0);
         }
-    });
+    }, PROCESS_TEST_TIMEOUT_MS);
 
     it("scan only reads: no install, no refresh, sudo only to ask whether it works", () => {
         expect(LINUX_SCAN_SCRIPT).not.toMatch(/apt-get (-\S+ )*(update|install|dist-upgrade)\b|apt-get -y|apt-mark (auto|manual)|makecache|zypper (-\S+ )*(refresh|ref|update|up|patch)\b|apk (update|upgrade|add)\b|pacman -S/);
@@ -151,8 +152,9 @@ describe("apt security versions", () => {
         const dir = fs.mkdtempSync(path.join(os.tmpdir(), "shellmind-apt-"));
         try {
             fs.writeFileSync(path.join(dir, "policy.txt"), policy);
-            // A stand-in apt-cache that prints the captured policy.
-            fs.writeFileSync(path.join(dir, "apt-cache"), "#!/bin/sh\ncat \"$(dirname \"$0\")/policy.txt\"\n", { mode: 0o755 });
+            // A stand-in apt-cache that prints the captured policy, as one
+            // process (no dirname; cat replaces the shell).
+            fs.writeFileSync(path.join(dir, "apt-cache"), "#!/bin/sh\nexec cat \"${0%/*}/policy.txt\"\n", { mode: 0o755 });
             const simulation = ["libc6", "perl-base", "base-files", "tzdata", "openssh-server", "linux-image-6.1.0-27-amd64", "libssl1.1", "bad;name"]
                 .map((name) => `Inst ${name} [1] (2 Debian:12.15/oldstable [amd64])`).join("\n");
             // A POSIX path for the shell's PATH (Git's sh on Windows: /c/...).
@@ -171,5 +173,5 @@ describe("apt security versions", () => {
         } finally {
             fs.rmSync(dir, { recursive: true, force: true });
         }
-    });
+    }, PROCESS_TEST_TIMEOUT_MS);
 });

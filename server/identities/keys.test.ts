@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { utils } from 'ssh2';
+import { ed25519Key, ed25519Seed } from '../../test/helpers/sshKeys';
 import { describePublicKey, generateEd25519, InvalidKeyError, publicKeyOf, safeComment } from './keys';
 
 describe('identity keys', () => {
@@ -18,15 +19,31 @@ describe('identity keys', () => {
     });
 
     it('derives the public key of a pasted private key and explains what it cannot read', () => {
-        const pair = utils.generateKeyPairSync('ed25519', { comment: 'me@laptop', passphrase: 'pp', cipher: 'aes256-ctr' });
-        expect(publicKeyOf(pair.private, 'pp')).toMatchObject({ type: 'ssh-ed25519', publicKey: expect.stringMatching(/ me@laptop$/) });
+        const pair = ed25519Key(ed25519Seed('pasted'), { comment: 'me@laptop', passphrase: 'pp' });
+        expect(publicKeyOf(pair.privateKey, 'pp')).toMatchObject({ type: 'ssh-ed25519', publicKey: expect.stringMatching(/ me@laptop$/) });
         // The comment of the file is kept unless another one is given.
-        expect(publicKeyOf(pair.private, 'pp', 'shellmind:x').publicKey).toMatch(/ shellmind:x$/);
+        expect(publicKeyOf(pair.privateKey, 'pp', 'shellmind:x').publicKey).toMatch(/ shellmind:x$/);
 
-        expect(() => publicKeyOf(pair.private)).toThrow(/passphrase is missing or wrong/);
-        expect(() => publicKeyOf(pair.private, 'nope')).toThrow(InvalidKeyError);
-        expect(() => publicKeyOf(pair.public)).toThrow(/public key/);
+        expect(() => publicKeyOf(pair.privateKey)).toThrow(/passphrase is missing or wrong/);
+        expect(() => publicKeyOf(pair.privateKey, 'nope')).toThrow(InvalidKeyError);
+        expect(() => publicKeyOf(pair.publicKey)).toThrow(/public key/);
         expect(() => publicKeyOf('not a key')).toThrow(/not a private key/);
+    });
+
+    it('reads pasted ed25519 keys whose public key or seed starts with a zero byte, with and without a passphrase', () => {
+        // ssh-keygen writes each of these about once in 256 keys. ssh2's
+        // generator cannot write one whose public key starts with a zero
+        // byte (see generateEd25519).
+        const seeds = [
+            ed25519Seed('zero public key', (seed, publicKey) => publicKey[0] === 0),
+            ed25519Seed('zero seed', (seed) => seed[0] === 0),
+        ];
+        for (const seed of seeds) {
+            for (const passphrase of [undefined, 'pp']) {
+                const pasted = ed25519Key(seed, { comment: 'me@laptop', passphrase });
+                expect(publicKeyOf(pasted.privateKey, passphrase)).toEqual(describePublicKey(pasted.publicKey));
+            }
+        }
     });
 
     it('describes OpenSSH public key lines and rejects anything else', () => {

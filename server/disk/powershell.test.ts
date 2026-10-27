@@ -1,8 +1,9 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { afterAll, beforeAll, describe, expect, it, type TestContext } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi, type TestContext } from 'vitest';
 import { runLocalPowerShell } from '../../test/helpers/localPowerShell';
+import { PROCESS_TEST_TIMEOUT_MS } from '../../test/setup/timeouts';
 import { psQuote } from '../ops/remote';
 import { deleteOlderScript, parseWindowsCleanups, updateCacheRunScript, windowsCleanupScript } from './cleanups/windows';
 import { parseWindowsLargeFiles, windowsLargeFilesScript } from './largeFiles';
@@ -13,6 +14,8 @@ import { parseWindowsUsage, windowsUsageScript } from './usage';
 // (Windows only) exactly as the backend delivers it (on stdin), against a
 // scratch folder tree: sizes, the time budget, junctions not followed, and
 // the deletion of old files.
+
+vi.setConfig({ testTimeout: PROCESS_TEST_TIMEOUT_MS });
 
 const WINDOWS = process.platform === 'win32';
 
@@ -81,7 +84,7 @@ describe.skipIf(!WINDOWS)('the disk toolkit\'s PowerShell on this machine', () =
         expect(drives[0].totalBytes).toBeGreaterThan(drives[0].freeBytes);
     });
 
-    it('measures the Windows cleanups without changing anything', { timeout: 90_000 }, async ({ skip }) => {
+    it('measures the Windows cleanups without changing anything', async ({ skip }) => {
         const previews = parseWindowsCleanups(await runPowerShell(windowsCleanupScript(7), skip), true, [`${process.env.SystemDrive ?? 'C:'}\\`], { days: 7 });
         expect(previews.map((preview) => preview.id)).toEqual(['win-temp', 'win-update-cache', 'win-recycle-bin', 'win-component-store']);
         expect(previews.every((preview) => preview.bytes === null || preview.bytes >= 0)).toBe(true);

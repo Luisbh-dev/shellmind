@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process';
 import type { TestContext } from 'vitest';
 import { POWERSHELL_STDIN_COMMAND, powershellInvocation } from '../../server/ops/remote';
+import { PROCESS_TEST_TIMEOUT_MS } from '../setup/timeouts';
 
 export type LocalPowerShellResult = { stdout: string; stderr: string; code: number | null };
 
@@ -9,8 +10,9 @@ export type LocalPowerShellResult = { stdout: string; stderr: string; code: numb
 // `powershell -NoProfile -NonInteractive -Command -` (powershellInvocation()),
 // so nothing but that fixed command line reaches the process list. Should
 // endpoint protection block PowerShell anyway, the test is skipped, not
-// failed.
-export function runLocalPowerShell(script: string, skip: TestContext['skip'], timeoutMs = 120_000): Promise<LocalPowerShellResult> {
+// failed. The process is killed after the budget of the test that waits for
+// it (PROCESS_TEST_TIMEOUT_MS), not before.
+export function runLocalPowerShell(script: string, skip: TestContext['skip'], timeoutMs = PROCESS_TEST_TIMEOUT_MS): Promise<LocalPowerShellResult> {
     const { command, stdin } = powershellInvocation(script, 'stdin');
     if (command !== POWERSHELL_STDIN_COMMAND) throw new Error('A test script must be ASCII (psQuote spells anything else).');
     const [program, ...args] = command.split(' ');

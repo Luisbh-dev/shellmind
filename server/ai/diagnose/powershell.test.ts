@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { isValidLogPath } from '../../../shared/ops';
 import { runLocalPowerShell } from '../../../test/helpers/localPowerShell';
+import { PROCESS_TEST_TIMEOUT_MS } from '../../../test/setup/timeouts';
 import { compactPowerShell, psQuote } from '../../ops/remote';
 import { checkLogSource, windowsTailScript } from './logs';
 import { windowsServiceEventsScript } from './service';
@@ -55,7 +56,7 @@ type Parsed = { errors: number; commands: string[]; values: string[] };
 
 async function parse(sources: string[], skip: Parameters<typeof runLocalPowerShell>[1]): Promise<Parsed[]> {
     const script = `$sources=@(${sources.map(psQuote).join(',')})\n${CHECKER}`;
-    const { stdout, code } = await runLocalPowerShell(script, skip, 60_000);
+    const { stdout, code } = await runLocalPowerShell(script, skip);
     expect(code).toBe(0);
     const parsed = JSON.parse(stdout.trim()) as Parsed[];
     expect(parsed).toHaveLength(sources.length);
@@ -68,7 +69,7 @@ describe.runIf(process.platform === 'win32')('Windows PowerShell', () => {
         const parsed = await parse(PAYLOADS.map((payload) => `$p=${psQuote(payload)}`), skip);
         expect(parsed.map((entry) => entry.values)).toEqual(PAYLOADS.map((payload) => [payload]));
         for (const entry of parsed) expect(entry).toMatchObject({ errors: 0, commands: [] });
-    }, 60_000);
+    }, PROCESS_TEST_TIMEOUT_MS);
 
     it('parses the evidence scripts with the names they embed as data', async ({ skip }) => {
         const parsed = await parse([
@@ -84,13 +85,13 @@ describe.runIf(process.platform === 'win32')('Windows PowerShell', () => {
             expect(entry.errors).toBe(0);
             expect(entry.commands).not.toContain('Write-Output');
         }
-    }, 60_000);
+    }, PROCESS_TEST_TIMEOUT_MS);
 
     it('tails a path with accents and typographic quotes as it is written', async ({ skip }) => {
         const path = 'C:\\ShellMind-no-such-folder\\caf\u00e9 \u2019quoted\u2019 [1].log';
-        const { stdout, code } = await runLocalPowerShell(windowsTailScript(path, 5), skip, 60_000);
+        const { stdout, code } = await runLocalPowerShell(windowsTailScript(path, 5), skip);
         expect(code).toBe(1);
         // "An object at the specified path ... does not exist" (in the language of the system).
         expect(stdout).toContain(path);
-    }, 60_000);
+    }, PROCESS_TEST_TIMEOUT_MS);
 });

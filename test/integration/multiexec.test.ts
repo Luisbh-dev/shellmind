@@ -6,7 +6,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { ServerChannel } from 'ssh2';
 import { isJobFinal, type MultiExecJob, type MultiExecJobEvent, type MultiExecJobInfo, type MultiExecResult } from '../../shared/multiexec';
 import type { AuditEntry } from '../../shared/types';
-import { startSshServer, type SshHarness } from '../helpers/sshServer';
+import { channelOpen, startSshServer, type SshHarness } from '../helpers/sshServer';
 import { bootTestServer, type TestServer } from '../helpers/testServer';
 
 // Multi-exec jobs over HTTP (start, follow, control, history) and the runner
@@ -59,6 +59,7 @@ function scriptedExec(command: string, channel: ServerChannel): boolean {
     }
     if ((match = /^fail-after-ms (\d+)$/.exec(command))) {
         setTimeout(() => {
+            if (!channelOpen(channel)) return;
             channel.stderr.write('failed late\n');
             channel.exit(1);
             channel.end();
@@ -70,6 +71,7 @@ function scriptedExec(command: string, channel: ServerChannel): boolean {
         const text = match[1];
         channel.write(`a${text.slice(0, 5)}`);
         setTimeout(() => {
+            if (!channelOpen(channel)) return;
             channel.write(`${text.slice(5)}z\n`);
             channel.exit(0);
             channel.end();

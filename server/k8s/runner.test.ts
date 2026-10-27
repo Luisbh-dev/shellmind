@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { PROCESS_TEST_TIMEOUT_MS } from '../../test/setup/timeouts';
 import { localRunner } from './runner';
 
 // The local runner (a local server with the kubectl preset) runs a program
@@ -48,7 +49,7 @@ describe('local kubectl runner', () => {
         });
         await expect(stream).rejects.toMatchObject({ code: 'EXEC_ABORTED' });
         expect(text).toContain('line 1');
-    });
+    }, PROCESS_TEST_TIMEOUT_MS);
 
     it('streams to the end with the exit status', async () => {
         let text = '';
@@ -56,7 +57,7 @@ describe('local kubectl runner', () => {
         expect(outcome).toEqual({ code: 2 });
         expect(text).toContain('a');
         expect(text).toContain('b');
-    });
+    }, PROCESS_TEST_TIMEOUT_MS);
 
     // Pod logs: kubectl's own messages are not lines of the container's output.
     it("keeps kubectl's messages apart from the output when asked", async () => {
@@ -70,7 +71,7 @@ describe('local kubectl runner', () => {
         expect(outcome).toEqual({ code: 1 });
         expect(out).toBe('a log line\n');
         expect(err).toContain('is waiting to start');
-    });
+    }, PROCESS_TEST_TIMEOUT_MS);
 
     it('shows commands the way a user would type them', () => {
         expect(node.display(['--context', 'kind-dev', 'get', 'pods', '-l', 'app=web x'])).toBe("kubectl --context kind-dev get pods -l 'app=web x'");

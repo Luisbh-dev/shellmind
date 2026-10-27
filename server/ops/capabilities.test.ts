@@ -3,6 +3,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { PROCESS_TEST_TIMEOUT_MS } from '../../test/setup/timeouts';
+import { resolveExecutable } from '../local/resolve';
 import { CMD_LINE_LIMIT, encodedPowerShellCommand } from './remote';
 import { LINUX_CAPABILITIES_SCRIPT, WINDOWS_CAPABILITIES_SCRIPT, parseLinuxCapabilities, parseWindowsCapabilities } from './capabilities';
 
@@ -46,12 +48,21 @@ describe('parseLinuxCapabilities', () => {
     });
 });
 
-// The real script in a real sh, with stand-ins for id, sudo and docker.
+// The real script in a real sh, with stand-ins for id, sudo and docker. Its
+// PATH holds the stand-ins only: what the machine has installed (a CI runner
+// image comes with Podman, systemd and more) must not answer instead.
 const HAS_SH = spawnSync('sh', ['-c', 'exit 0']).status === 0;
+// The script pipes through head: the stand-ins' folder gets the real one, as
+// sh names it (Git for Windows' sh: /usr/bin/head).
+const HEAD = HAS_SH ? spawnSync('sh', ['-c', 'command -v head'], { encoding: 'utf8' }).stdout.trim() : '';
+const pathKey = Object.keys(process.env).find((key) => key.toUpperCase() === 'PATH') ?? 'PATH';
 
-describe.skipIf(!HAS_SH)('LINUX_CAPABILITIES_SCRIPT in sh', () => {
+describe.skipIf(!HAS_SH || !HEAD)('LINUX_CAPABILITIES_SCRIPT in sh', () => {
+    let sh: string;
     let bin: string;
-    beforeAll(() => {
+    beforeAll(async () => {
+        // Found on the machine's PATH: the child's PATH has no sh to find.
+        sh = (await resolveExecutable('sh')) as string;
         bin = fs.mkdtempSync(path.join(os.tmpdir(), 'shellmind-caps-'));
         const stub = (name: string, body: string) => {
             fs.writeFileSync(path.join(bin, name), `#!/bin/sh\n${body}\n`);
@@ -61,15 +72,16 @@ describe.skipIf(!HAS_SH)('LINUX_CAPABILITIES_SCRIPT in sh', () => {
         // Passwordless sudo that runs the command as the same user.
         stub('sudo', '[ "$1" = -n ] && shift; [ "$1" = true ] && exit 0; exec "$@"');
         stub('docker', 'echo "Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?" >&2; exit 1');
+        stub('head', `exec '${HEAD}' "$@"`);
     });
     afterAll(() => fs.rmSync(bin, { recursive: true, force: true }));
 
     it('keeps Docker\'s own error when the sudo attempt fails too', () => {
-        const result = spawnSync('sh', ['-s'], { input: LINUX_CAPABILITIES_SCRIPT, encoding: 'utf8', env: { ...process.env, PATH: `${bin}${path.delimiter}${process.env.PATH ?? ''}` } });
+        const result = spawnSync(sh, ['-s'], { input: LINUX_CAPABILITIES_SCRIPT, encoding: 'utf8', env: { ...process.env, [pathKey]: bin } });
         const caps = parseLinuxCapabilities(result.stdout);
         expect(caps).toMatchObject({ root: false, sudo: true });
         expect(caps.containers).toMatchObject({ engine: null, problem: expect.stringMatching(/^Cannot connect to the Docker daemon/) });
-    });
+    }, PROCESS_TEST_TIMEOUT_MS);
 });
 
 describe('parseWindowsCapabilities', () => {

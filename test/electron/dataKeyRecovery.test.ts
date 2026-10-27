@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { startBackend, type Backend } from '../../electron/backend';
 import { BACKEND_KEY_FILE, DATABASE_FILE, DataKeySession, ENCRYPTED_KEY_FILE, type SecretStore } from '../../electron/dataKey';
+import { PROCESS_TEST_TIMEOUT_MS } from '../setup/timeouts';
 
 // The desktop data key against the real backend (server.ts under tsx), forked
 // the way electron/main.ts forks the compiled one: a database that holds
@@ -64,7 +65,7 @@ async function launch(dataDir: string, session: DataKeySession): Promise<Backend
         if (value === undefined) delete env[name];
         else env[name] = value;
     }
-    const backend = await startBackend({ entry, env, cwd: repoRoot, readyTimeoutMs: 60_000, onOutput: () => {} });
+    const backend = await startBackend({ entry, env, cwd: repoRoot, readyTimeoutMs: PROCESS_TEST_TIMEOUT_MS, onOutput: () => {} });
     running.push(backend);
     await session.started();
     return backend;
@@ -121,5 +122,5 @@ describe('desktop data key with the real backend', () => {
         const saved = await api(backend, `/api/servers/${id}`, { method: 'PUT', body: JSON.stringify({ name: 'web', ip: '10.0.0.5', port: 22, type: 'linux', username: 'root', password: 'pw-2' }) });
         expect(saved.status).toBeLessThan(300);
         expect(Boolean((await savedServers(backend))[0]!.has_password)).toBe(true);
-    }, 120_000);
+    }, PROCESS_TEST_TIMEOUT_MS);
 });
