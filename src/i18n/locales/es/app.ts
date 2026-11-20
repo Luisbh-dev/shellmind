@@ -82,7 +82,8 @@ const es: typeof en = {
     ui: {
         showSecret: 'Mostrar contraseña',
         notifications: 'Notificaciones',
-        removeTag: 'Quitar la etiqueta {tag}'
+        removeTag: 'Quitar la etiqueta {tag}',
+        tagSuggestions: 'Etiquetas existentes'
     },
     errorBoundary: {
         title: 'Algo ha fallado',

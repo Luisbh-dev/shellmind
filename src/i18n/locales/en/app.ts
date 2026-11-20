@@ -80,7 +80,8 @@ export default {
     ui: {
         showSecret: 'Show password',
         notifications: 'Notifications',
-        removeTag: 'Remove tag {tag}'
+        removeTag: 'Remove tag {tag}',
+        tagSuggestions: 'Existing tags'
     },
     errorBoundary: {
         title: 'Something went wrong',
