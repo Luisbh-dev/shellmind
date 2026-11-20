@@ -68,6 +68,21 @@ export function formatSnapshot(snapshot: StatusSnapshot): string {
         }
     }
     if (snapshot.network) lines.push(`Network: in ${rate(snapshot.network.rxBytesPerSec)}, out ${rate(snapshot.network.txBytesPerSec)}`);
+    if (snapshot.gpu) {
+        lines.push(snapshot.gpu.unifiedMemory ? "GPUs (unified memory: the GPU shares the system memory shown above):" : "GPUs:");
+        for (const gpu of snapshot.gpu.devices) {
+            const parts = [
+                gpu.utilizationPercent !== null ? `${fixed(gpu.utilizationPercent)}% busy` : null,
+                gpu.memory ? `memory ${fixed(gpu.memory.usedMB / 1024)} of ${fixed(gpu.memory.totalMB / 1024)} GB (${fixed(gpu.memory.usagePercent)}%)` : null,
+                gpu.temperatureC !== null ? `${gpu.temperatureC} °C` : null,
+                gpu.powerWatts !== null ? `${fixed(gpu.powerWatts)} W${gpu.powerLimitWatts !== null ? ` of ${fixed(gpu.powerLimitWatts)} W` : ""}` : null
+            ].filter(Boolean);
+            lines.push(`  GPU ${gpu.index} ${gpu.name}: ${parts.join(", ") || "no readings"}`);
+        }
+        for (const process of snapshot.gpu.processes) {
+            lines.push(`  GPU process pid ${process.pid} ${process.name}${process.memoryMB !== null ? `: ${fixed(process.memoryMB, 0)} MB` : ""}`);
+        }
+    }
     if (snapshot.failedUnits !== null) lines.push(`Failed systemd units: ${snapshot.failedUnits}`);
     if (snapshot.loggedInUsers !== null) lines.push(`Users logged in: ${snapshot.loggedInUsers}`);
     if (snapshot.processes.length) {

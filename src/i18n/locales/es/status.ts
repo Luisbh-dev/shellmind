@@ -112,7 +112,23 @@ const es: typeof en = {
         tableCaption: '{label}, de la más reciente a la más antigua',
         cpu: 'Uso de CPU',
         memory: 'Uso de memoria',
+        gpu: 'Uso de GPU',
         network: 'Tráfico de red'
+    },
+    gpu: {
+        title: 'GPU',
+        cardTitle: 'Detalle de la GPU',
+        count: '{count} GPU',
+        unified: 'Memoria unificada',
+        unifiedHint: 'Esta GPU comparte la memoria del sistema (como en una DGX Spark), así que no tiene memoria propia que informar. La cifra de Memoria ya incluye lo que usa la GPU.',
+        temperature: '{value} °C',
+        power: '{value} W',
+        powerOf: '{value} W de {limit} W',
+        memory: 'Memoria {used} / {total}',
+        utilization: 'Uso de {name}',
+        processesCaption: 'Procesos que usan la GPU',
+        processMemory: 'Memoria de GPU',
+        sharedMemory: 'Memoria (compartida)'
     },
     network: {
         rx: 'Recibido',

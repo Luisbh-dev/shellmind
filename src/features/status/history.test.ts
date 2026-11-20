@@ -36,6 +36,16 @@ describe('status history', () => {
         expect(history[0]).toEqual({ time: 2, cpu: null, memory: 50, rx: 10, tx: 20 });
     });
 
+    it('records the mean GPU utilization only for hosts that have a GPU', () => {
+        const device = (index: number, utilizationPercent: number | null) => ({ index, name: 'GPU', utilizationPercent, memory: null, temperatureC: null, powerWatts: null, powerLimitWatts: null });
+        const withGpu = { ...report(1, 10), gpu: { devices: [device(0, 80), device(1, 40), device(2, null)], unifiedMemory: false, processes: [] } };
+        expect(appendSample([], withGpu)[0].gpu).toBe(60);
+        expect(appendSample([], report(1, 10))[0]).not.toHaveProperty('gpu');
+        // A sample without a GPU reading leaves a gap in the GPU series instead of a zero.
+        const history = [{ ...sample(1000, 5), gpu: 60 }, sample(2000, 5)];
+        expect(seriesOf(history, ['gpu'])).toEqual({ times: [1000], values: [[60]] });
+    });
+
     it('shapes series over a window, keeping missing values in place', () => {
         const history = [sample(1000, 5), sample(2000, null, 7), sample(3000, 30, 8), sample(4000, null)];
         // A sample with nothing for any of the keys is left out; one missing a single key keeps a null there.

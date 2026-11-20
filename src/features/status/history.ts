@@ -12,9 +12,17 @@ export type StatusSample = {
     memory: number | null;
     rx: number | null;
     tx: number | null;
+    // Average GPU utilization; only samples of a host with an NVIDIA GPU have it.
+    gpu?: number | null;
 };
 
 export type SeriesKey = Exclude<keyof StatusSample, 'time'>;
+
+// Mean utilization of the GPUs that reported one; null without any.
+export function averageGpuUtilization(snapshot: StatusSnapshot): number | null {
+    const values = (snapshot.gpu?.devices ?? []).flatMap((device) => (device.utilizationPercent === null ? [] : [device.utilizationPercent]));
+    return values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : null;
+}
 
 export function appendSample(history: StatusSample[], snapshot: StatusSnapshot, limit = HISTORY_LENGTH): StatusSample[] {
     // The same report twice (a shared collection answered two polls) is one sample.
@@ -26,6 +34,8 @@ export function appendSample(history: StatusSample[], snapshot: StatusSnapshot, 
         rx: snapshot.network?.rxBytesPerSec ?? null,
         tx: snapshot.network?.txBytesPerSec ?? null
     };
+    const gpu = averageGpuUtilization(snapshot);
+    if (gpu !== null) sample.gpu = gpu;
     const next = [...history, sample];
     return next.length > limit ? next.slice(next.length - limit) : next;
 }
@@ -34,10 +44,10 @@ export function appendSample(history: StatusSample[], snapshot: StatusSnapshot, 
 // without a value for a key keeps its place with null, so that line breaks
 // there instead of joining its neighbours.
 export function seriesOf(history: StatusSample[], keys: SeriesKey[], since = -Infinity): { times: number[]; values: Array<Array<number | null>> } {
-    const rows = history.filter((sample) => sample.time >= since && keys.some((key) => sample[key] !== null));
+    const rows = history.filter((sample) => sample.time >= since && keys.some((key) => sample[key] != null));
     return {
         times: rows.map((sample) => sample.time),
-        values: keys.map((key) => rows.map((sample) => sample[key]))
+        values: keys.map((key) => rows.map((sample) => sample[key] ?? null))
     };
 }
 

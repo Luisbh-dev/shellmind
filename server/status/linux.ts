@@ -1,5 +1,6 @@
 import type { StatusDisk, StatusInterface, StatusProcess, StatusSection, StatusSnapshot } from "../../shared/status";
 import { POSIX_SECTION_FUNCTION, parseSections } from "../ops/remote";
+import { GPU_SCRIPT_LINES, parseGpu } from "./gpu";
 import { aggregateStorage, clampPercent, dedupeDisks, percent, roundTo } from "./parse";
 
 // Linux status: one POSIX script (run by `sh -s`, so it works with any login
@@ -84,6 +85,7 @@ export const LINUX_STATUS_SCRIPT = [
     "cat /proc/net/dev 2>/dev/null",
     "m procs",
     `{ printf '%s\\n' "$P" | sed 's/^/A /'; cat /proc/[0-9]*/stat 2>/dev/null | sed 's/^/B /'; } | awk -v self="$S" '${PROCESS_DELTA_AWK}' | sort -k2,2nr -k3,3nr | head -n ${TOP_PROCESSES}`,
+    ...GPU_SCRIPT_LINES,
     "m end",
     ""
 ].join("\n");
@@ -288,8 +290,9 @@ export function parseLinuxStatus(output: string, collectedAt = Date.now()): Stat
     const pageKb = (firstNumber(sections.get("pagesize")) ?? 4096) / 1024;
     const ticksPerCore = cores && totalDelta > 0 ? totalDelta / cores : 0;
     const processes = parseProcesses(sections.get("procs") ?? "", ticksPerCore, pageKb, memTotalKb);
+    const { gpu, unreadable: gpuUnreadable } = parseGpu(sections);
 
-    return {
+    const snapshot: StatusSnapshot = {
         platform: "linux",
         collectedAt,
         hostname,
@@ -309,4 +312,9 @@ export function parseLinuxStatus(output: string, collectedAt = Date.now()): Stat
         sampleSeconds,
         unavailable
     };
+    // Only hosts with an NVIDIA GPU carry the field; one whose nvidia-smi
+    // answered nothing usable is reported as such.
+    if (gpu) snapshot.gpu = gpu;
+    if (gpuUnreadable) unavailable.push("gpu");
+    return snapshot;
 }

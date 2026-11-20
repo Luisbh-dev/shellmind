@@ -112,7 +112,23 @@ export default {
         tableCaption: '{label}, newest first',
         cpu: 'CPU usage',
         memory: 'Memory usage',
+        gpu: 'GPU usage',
         network: 'Network traffic'
+    },
+    gpu: {
+        title: 'GPU',
+        cardTitle: 'GPU details',
+        count: '{count} GPUs',
+        unified: 'Unified memory',
+        unifiedHint: 'This GPU shares the system memory (as on a DGX Spark), so it has no memory of its own to report. The Memory figure already includes what the GPU uses.',
+        temperature: '{value} °C',
+        power: '{value} W',
+        powerOf: '{value} W of {limit} W',
+        memory: 'Memory {used} / {total}',
+        utilization: '{name} utilization',
+        processesCaption: 'Processes using the GPU',
+        processMemory: 'GPU memory',
+        sharedMemory: 'Memory (shared)'
     },
     network: {
         rx: 'Received',

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { ArrowDown, ArrowUp, Cpu, HardDrive, ListOrdered, MemoryStick, Network, RefreshCw, ServerCrash } from 'lucide-react';
+import { ArrowDown, ArrowUp, CircuitBoard, Cpu, HardDrive, ListOrdered, MemoryStick, Network, RefreshCw, ServerCrash } from 'lucide-react';
 import { holdForCode } from '@shared/fleet';
 import type { StatusSnapshot } from '@shared/status';
 import { Button } from '@/components/ui';
@@ -14,9 +14,10 @@ import { CARD, Card, StatTile } from './Card';
 import { ChartCard } from './ChartCard';
 import { DiskList } from './DiskList';
 import { formatClock, formatGB, formatMB, formatRate, formatRateTick, formatSeconds } from './format';
-import { appendSample, HISTORY_LENGTH, rateAxis, seriesOf, statsOf, type StatusSample } from './history';
+import { GpuCard } from './GpuCard';
+import { appendSample, averageGpuUtilization, HISTORY_LENGTH, rateAxis, seriesOf, statsOf, type StatusSample } from './history';
 import { useNow, usePageVisible, usePolling } from './hooks';
-import { CHART_GRID, CHART_WIDE, DETAIL_GRID, KPI_GRID, KPI_GRID_THREE, KPI_WIDE, STALE_DIM } from './layout';
+import { CHART_FULL, CHART_GRID, CHART_WIDE, DETAIL_GRID, KPI_GPU, KPI_GRID, KPI_GRID_FIVE, KPI_GRID_THREE, KPI_WIDE, STALE_DIM } from './layout';
 import { LoadTile } from './LoadTile';
 import { Meter } from './Meter';
 import { ProcessTable } from './ProcessTable';
@@ -56,6 +57,21 @@ function percentParts(value: number, language: string): { value: string; unit: s
 
 function limitsText(threshold: Threshold, language: string, t: TranslateFn): string {
     return t('status.limits', { warn: formatPercent(threshold.warn, language), critical: formatPercent(threshold.critical, language) });
+}
+
+// Temperature, power and memory of the first GPU (the GPU card lists every one).
+function gpuFooter(gpu: NonNullable<StatusSnapshot['gpu']>, language: string, t: TranslateFn): string | undefined {
+    const [first] = gpu.devices;
+    const parts = [
+        first.temperatureC !== null ? t('status.gpu.temperature', { value: first.temperatureC }) : null,
+        first.powerWatts !== null ? t('status.gpu.power', { value: first.powerWatts.toLocaleString(language) }) : null,
+        gpu.unifiedMemory
+            ? t('status.gpu.unified')
+            : first.memory && gpu.devices.length === 1
+                ? t('status.gpu.memory', { used: formatMB(first.memory.usedMB, language), total: formatMB(first.memory.totalMB, language) })
+                : null
+    ].filter(Boolean);
+    return parts.length ? parts.join(' · ') : undefined;
 }
 
 function chartDescription(label: string, values: Array<number | null>, format: (value: number) => string, t: TranslateFn): string {
@@ -130,7 +146,7 @@ function LoadError({ failure, retryText, onRetry }: { failure: DescribedError; r
 function Metrics({ snapshot, history, serverId }: { snapshot: StatusSnapshot; history: StatusSample[]; serverId: number }) {
     const t = useT();
     const language = useLanguage();
-    const { cpu, memory, load, network } = snapshot;
+    const { cpu, memory, load, network, gpu } = snapshot;
 
     const percent = (value: number) => formatPercent(value, language);
     const percentTick = (value: number) => `${value}%`;
@@ -143,6 +159,8 @@ function Metrics({ snapshot, history, serverId }: { snapshot: StatusSnapshot; hi
     const cpuSeries = seriesOf(history, ['cpu'], start);
     const memorySeries = seriesOf(history, ['memory'], start);
     const networkSeries = seriesOf(history, ['rx', 'tx'], start);
+    const gpuSeries = seriesOf(history, ['gpu'], start);
+    const gpuUsage = gpu ? averageGpuUtilization(snapshot) : null;
     const rateScale = rateAxis(Math.max(0, ...networkSeries.values.flat().map((value) => value ?? 0)));
     const rateTick = (value: number) => formatRateTick(value, rateScale.exponent, language);
     const statsText = (values: Array<number | null>) => {
@@ -160,7 +178,7 @@ function Metrics({ snapshot, history, serverId }: { snapshot: StatusSnapshot; hi
 
     return (
         <>
-            <div className={load ? KPI_GRID : KPI_GRID_THREE}>
+            <div className={gpu ? (load ? KPI_GRID_FIVE : KPI_GRID) : (load ? KPI_GRID : KPI_GRID_THREE)}>
                 <StatTile
                     icon={<Cpu />}
                     label={t('status.cpu.title')}
@@ -230,7 +248,7 @@ function Metrics({ snapshot, history, serverId }: { snapshot: StatusSnapshot; hi
                             total: formatGB(storageView.total.totalGB, language)
                         })
                         : t('status.storage.free', { free: formatGB(storageView.freeGB, language) }))}
-                    className={load ? undefined : KPI_WIDE}
+                    className={load || gpu ? undefined : KPI_WIDE}
                 >
                     {storageView && (
                         <Meter
@@ -244,6 +262,22 @@ function Metrics({ snapshot, history, serverId }: { snapshot: StatusSnapshot; hi
                 </StatTile>
 
                 {load && <LoadTile load={load} cores={cpu?.cores ?? null} />}
+
+                {gpu && (
+                    <StatTile
+                        icon={<CircuitBoard />}
+                        label={t('status.gpu.title')}
+                        value={gpuUsage !== null ? percentParts(gpuUsage, language).value : unavailable}
+                        unit={gpuUsage !== null ? '%' : undefined}
+                        aside={gpu.devices.length === 1 ? gpu.devices[0].name : t('status.gpu.count', { count: gpu.devices.length })}
+                        footer={gpuFooter(gpu, language, t)}
+                        className={load ? KPI_GPU : undefined}
+                    >
+                        {gpuUsage !== null && (
+                            <Meter value={gpuUsage} tone="ok" label={t('status.gpu.title')} valueText={percent(gpuUsage)} />
+                        )}
+                    </StatTile>
+                )}
             </div>
 
             <div className={CHART_GRID}>
@@ -275,8 +309,24 @@ function Metrics({ snapshot, history, serverId }: { snapshot: StatusSnapshot; hi
                     emptyText={memory ? t('status.chart.collecting') : t('status.unavailable')}
                     {...chartTimes}
                 />
+                {gpu && (
+                    <ChartCard
+                        title={t('status.chart.gpu')}
+                        icon={<CircuitBoard />}
+                        stats={statsText(gpuSeries.values[0])}
+                        series={[{ id: 'gpu', label: t('status.gpu.title'), color: viz.series1(), values: gpuSeries.values[0] }]}
+                        times={gpuSeries.times}
+                        yMax={100}
+                        yTicks={PERCENT_TICKS}
+                        formatValue={percent}
+                        formatTick={percentTick}
+                        description={chartDescription(t('status.gpu.title'), gpuSeries.values[0], percent, t)}
+                        emptyText={gpuUsage !== null ? t('status.chart.collecting') : t('status.unavailable')}
+                        {...chartTimes}
+                    />
+                )}
                 <ChartCard
-                    className={CHART_WIDE}
+                    className={gpu ? CHART_FULL : CHART_WIDE}
                     title={t('status.chart.network')}
                     icon={<Network />}
                     current={network ? { rx: rate(network.rxBytesPerSec), tx: rate(network.txBytesPerSec) } : undefined}
@@ -310,6 +360,7 @@ function Metrics({ snapshot, history, serverId }: { snapshot: StatusSnapshot; hi
                 </Card>
 
                 <div className="flex min-w-0 flex-col gap-3">
+                    {gpu && <GpuCard gpu={gpu} />}
                     <Card title={t('status.storage.filesystems')} icon={<HardDrive />} subtitle={limitsText(THRESHOLDS.disk, language, t)}>
                         <DiskList disks={snapshot.disks} serverId={serverId} />
                     </Card>

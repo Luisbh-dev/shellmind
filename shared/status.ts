@@ -6,7 +6,7 @@
 
 export type StatusPlatform = "linux" | "windows";
 
-export type StatusSection = "cpu" | "memory" | "swap" | "load" | "disks" | "processes" | "network" | "failedUnits" | "users";
+export type StatusSection = "cpu" | "memory" | "swap" | "load" | "disks" | "processes" | "network" | "failedUnits" | "users" | "gpu";
 
 export type StatusDisk = {
     // Device (Linux) or drive letter (Windows).
@@ -33,6 +33,38 @@ export type StatusInterface = {
     name: string;
     rxBytesPerSec: number;
     txBytesPerSec: number;
+};
+
+// One NVIDIA GPU, as nvidia-smi reports it. A reading it does not give (it
+// answers N/A) is null, never 0.
+export type StatusGpu = {
+    index: number;
+    name: string;
+    utilizationPercent: number | null;
+    // Dedicated memory; null when the GPU has none to report (see unifiedMemory).
+    memory: {
+        totalMB: number;
+        usedMB: number;
+        usagePercent: number;
+    } | null;
+    temperatureC: number | null;
+    powerWatts: number | null;
+    powerLimitWatts: number | null;
+};
+
+// A process using the GPU (compute apps).
+export type StatusGpuProcess = {
+    pid: number;
+    name: string;
+    memoryMB: number | null;
+};
+
+export type StatusGpuInfo = {
+    devices: StatusGpu[];
+    // The GPU shares the system's memory (DGX Spark, Jetson): nvidia-smi has no
+    // dedicated memory to report, and what its processes hold is system RAM.
+    unifiedMemory: boolean;
+    processes: StatusGpuProcess[];
 };
 
 export type StatusSnapshot = {
@@ -82,6 +114,8 @@ export type StatusSnapshot = {
         txBytesPerSec: number;
         interfaces: StatusInterface[];
     } | null;
+    // NVIDIA GPUs (Linux hosts with nvidia-smi); absent on hosts without one.
+    gpu?: StatusGpuInfo;
     // Failed systemd units (null without systemd, e.g. on Windows).
     failedUnits: number | null;
     // Distinct users with a login session.

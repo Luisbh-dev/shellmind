@@ -87,6 +87,54 @@ describe('StatusDashboard', () => {
         expect(screen.getByText('Live')).toBeInTheDocument();
     });
 
+    describe('GPU', () => {
+        const spark: StatusSnapshot['gpu'] = {
+            devices: [{ index: 0, name: 'NVIDIA GB10', utilizationPercent: 96, memory: null, temperatureC: 61, powerWatts: 38.5, powerLimitWatts: null }],
+            unifiedMemory: true,
+            processes: [{ pid: 2065247, name: 'python3', memoryMB: 36864 }, { pid: 2065400, name: 'VLLM::EngineCore', memoryMB: null }],
+        };
+
+        it('shows a DGX Spark (unified memory): utilization, temperature and power, and no made-up memory capacity', async () => {
+            fetchMock.mockImplementation(async () => json(snapshot({ gpu: spark })));
+            render(<StatusDashboard server={server(1, 'spark')} isActive />);
+
+            const tile = await screen.findByRole('region', { name: 'GPU' });
+            expect(within(tile).getByText('96')).toBeInTheDocument();
+            expect(within(tile).getByText('NVIDIA GB10')).toBeInTheDocument();
+            expect(within(tile).getByRole('meter', { name: 'GPU' })).toHaveAttribute('aria-valuenow', '96');
+            expect(within(tile).getByText('61 °C · 38.5 W · Unified memory')).toBeInTheDocument();
+            expect(screen.getByRole('region', { name: 'GPU usage' })).toBeInTheDocument();
+
+            const processes = screen.getByRole('table', { name: 'Processes using the GPU' });
+            expect(within(processes).getByText('Memory (shared)')).toBeInTheDocument();
+            expect(within(processes).getByText('python3')).toBeInTheDocument();
+            expect(within(processes).getByText('36.0 GB')).toBeInTheDocument();
+            expect(within(processes).getByText('—')).toBeInTheDocument();
+        });
+
+        it('shows the dedicated memory of a discrete GPU', async () => {
+            const discrete: StatusSnapshot['gpu'] = {
+                devices: [{ index: 0, name: 'NVIDIA RTX 4090', utilizationPercent: 20, memory: { totalMB: 24576, usedMB: 6144, usagePercent: 25 }, temperatureC: 54, powerWatts: 120, powerLimitWatts: 450 }],
+                unifiedMemory: false,
+                processes: [],
+            };
+            fetchMock.mockImplementation(async () => json(snapshot({ gpu: discrete })));
+            render(<StatusDashboard server={server(1)} isActive />);
+
+            const tile = await screen.findByRole('region', { name: 'GPU' });
+            expect(within(tile).getByText('54 °C · 120 W · Memory 6.0 GB / 24.0 GB')).toBeInTheDocument();
+            expect(screen.queryByText('Unified memory')).toBeNull();
+            expect(screen.queryByRole('table', { name: 'Processes using the GPU' })).toBeNull();
+        });
+
+        it('adds nothing for a host without a GPU', async () => {
+            render(<StatusDashboard server={server(1)} isActive />);
+            await screen.findByRole('region', { name: 'CPU' });
+            expect(screen.queryByRole('region', { name: 'GPU' })).toBeNull();
+            expect(screen.queryByRole('region', { name: 'GPU usage' })).toBeNull();
+        });
+    });
+
     it('sums up the health as the worst metric, with what pulls it down', async () => {
         render(<StatusDashboard server={server(1)} isActive />);
         expect(await screen.findByText('Health: Critical')).toBeInTheDocument();

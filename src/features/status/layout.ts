@@ -5,8 +5,15 @@
 // about 26rem), so the charts still start on the first screen.
 export const KPI_GRID = 'grid grid-cols-1 gap-3 [@container(min-width:22rem)]:grid-cols-2 [@container(min-width:56rem)]:grid-cols-4';
 export const KPI_GRID_THREE = 'grid grid-cols-1 gap-3 [@container(min-width:22rem)]:grid-cols-2 [@container(min-width:40rem)]:grid-cols-3';
+// CPU, memory, storage, load and a GPU: five across once the panel is wide.
+export const KPI_GRID_FIVE = 'grid grid-cols-1 gap-3 [@container(min-width:22rem)]:grid-cols-2 [@container(min-width:48rem)]:grid-cols-3 [@container(min-width:80rem)]:grid-cols-5';
+// The GPU tile, last of five: it takes what is left of the row (two columns of
+// two or three) so no cell stays empty, and one of five when they fit across.
+export const KPI_GPU = '[@container(min-width:22rem)]:col-span-2 [@container(min-width:80rem)]:col-span-1';
 // The tile that ends a two-column row of three alone takes the whole row.
 export const KPI_WIDE = '[@container(min-width:22rem)]:col-span-2 [@container(min-width:40rem)]:col-span-1';
+// With a GPU chart there are four charts: three across, then the traffic chart on a row of its own.
+export const CHART_FULL = '[@container(min-width:60rem)]:col-span-3';
 // Tighter tiles while they are two to a narrow row.
 export const TILE_PADDING = 'p-3 [@container(min-width:40rem)]:p-4';
 export const CHART_GRID = 'grid grid-cols-1 gap-3 [@container(min-width:36rem)]:grid-cols-2 [@container(min-width:60rem)]:grid-cols-3';
