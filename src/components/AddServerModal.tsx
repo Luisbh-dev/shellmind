@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, Check, FileKey, KeyRound, Lock, Server, Undo2, UserRound } from 'lucide-react';
 import type { ServerSummary, ServerType } from '@shared/types';
 import { defaultPort } from '@shared/ports';
@@ -48,6 +48,9 @@ type SaveResponse = { data: ServerSummary };
 // The form a server is edited from (an empty one for a new server).
 const startForm = (server?: ServerSummary | null): ServerForm => (server ? formFromServer(server) : EMPTY_FORM);
 
+// Value of the group list's "New group…" entry (a group name never contains it).
+const NEW_GROUP = '\u0000new-group';
+
 export default function AddServerModal({ isOpen, onClose, onSaved, initialData, servers }: AddServerModalProps) {
     const t = useT();
     const toast = useToast();
@@ -65,7 +68,8 @@ export default function AddServerModal({ isOpen, onClose, onSaved, initialData, 
     const startedFrom = useRef<{ data: ServerSummary | null | undefined } | null>(isOpen ? { data: initialData } : null);
     const formRef = useRef<HTMLFormElement>(null);
     const serverErrorRef = useRef<HTMLDivElement>(null);
-    const groupListId = useId();
+    const newGroupRef = useRef<HTMLInputElement>(null);
+    const [creatingGroup, setCreatingGroup] = useState(false);
     const isEdit = Boolean(initialData);
     // W7-S2: saved identities (Settings > Keychain) a server can sign in with.
     const { identities } = useIdentities();
@@ -92,6 +96,7 @@ export default function AddServerModal({ isOpen, onClose, onSaved, initialData, 
         const start = startForm(initialData);
         initialForm.current = start;
         setForm(start);
+        setCreatingGroup(false);
         setRemovals(NO_REMOVALS);
         setErrors({});
         setServerError(null);
@@ -129,6 +134,26 @@ export default function AddServerModal({ isOpen, onClose, onSaved, initialData, 
     ], [servers, initialData?.id, t]);
 
     const groups = useMemo(() => allGroups(servers), [servers]);
+    const groupOptions = useMemo(() => {
+        const names = form.group_name && !groups.includes(form.group_name) && !creatingGroup ? [...groups, form.group_name] : groups;
+        return [
+            { value: '', label: t('addServer.groupChoice.none') },
+            ...names.map((name) => ({ value: name, label: name })),
+            { value: NEW_GROUP, label: t('addServer.groupChoice.new') }
+        ];
+    }, [groups, form.group_name, creatingGroup, t]);
+    const chooseGroup = (value: string) => {
+        if (value === NEW_GROUP) {
+            setCreatingGroup(true);
+            set({ group_name: '' });
+        } else {
+            setCreatingGroup(false);
+            set({ group_name: value });
+        }
+    };
+    useEffect(() => {
+        if (creatingGroup) newGroupRef.current?.focus();
+    }, [creatingGroup]);
     const tagSuggestions = useMemo(() => allTags(servers), [servers]);
     const willClear = secretsToClear(form, initialData, removals);
 
@@ -555,22 +580,35 @@ export default function AddServerModal({ isOpen, onClose, onSaved, initialData, 
                     <legend className="mb-1 pr-2 text-xs font-semibold uppercase tracking-wider text-zinc-300">{t('addServer.organization')}</legend>
                     <div className="grid grid-cols-2 gap-3">
                         <Field label={t('addServer.fields.group')}>
-                            <Input
-                                value={form.group_name}
-                                onChange={(e) => set({ group_name: e.target.value })}
-                                placeholder={t('addServer.hints.group')}
-                                list={groups.length ? groupListId : undefined}
-                                maxLength={128}
-                            />
+                            {groups.length > 0 ? (
+                                <Select
+                                    value={creatingGroup ? NEW_GROUP : form.group_name}
+                                    onChange={chooseGroup}
+                                    options={groupOptions}
+                                />
+                            ) : (
+                                <Input
+                                    value={form.group_name}
+                                    onChange={(e) => set({ group_name: e.target.value })}
+                                    placeholder={t('addServer.hints.group')}
+                                    maxLength={128}
+                                />
+                            )}
                         </Field>
                         <Field group label={t('addServer.fields.color')}>
                             <ColorPicker value={form.color} onChange={(color) => set({ color })} />
                         </Field>
                     </div>
-                    {groups.length > 0 && (
-                        <datalist id={groupListId}>
-                            {groups.map((group) => <option key={group} value={group} />)}
-                        </datalist>
+                    {creatingGroup && groups.length > 0 && (
+                        <Field label={t('addServer.groupChoice.newName')}>
+                            <Input
+                                ref={newGroupRef}
+                                value={form.group_name}
+                                onChange={(e) => set({ group_name: e.target.value })}
+                                placeholder={t('addServer.hints.group')}
+                                maxLength={128}
+                            />
+                        </Field>
                     )}
                     <Field label={t('addServer.fields.tags')} hint={t('addServer.hints.tags')}>
                         <TagInput value={form.tags} onChange={(tags) => set({ tags })} suggestions={tagSuggestions} placeholder="prod, web" />

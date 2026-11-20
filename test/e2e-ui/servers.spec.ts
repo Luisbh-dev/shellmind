@@ -23,7 +23,15 @@ test('adds a connection with its group, tags and color, edits it and deletes it'
     await dialog.getByLabel('SSH port').fill(String(state.hosts.alpha.port));
     await dialog.getByLabel('Username').fill('demo');
     await dialog.getByLabel('Password', { exact: true }).fill('demopw');
-    await dialog.getByLabel('Group').fill(`Payments ${id}`);
+    // A text field until some group exists, then a dropdown with "New group…".
+    const groupSelect = dialog.getByRole('combobox', { name: /^Group/ });
+    if (await groupSelect.count()) {
+        await groupSelect.click();
+        await page.getByRole('option', { name: 'New group…' }).click();
+        await dialog.getByLabel('New group name').fill(`Payments ${id}`);
+    } else {
+        await dialog.getByLabel('Group').fill(`Payments ${id}`);
+    }
     for (const tag of [`orders-${id}`, 'api']) {
         await dialog.getByLabel('Tags').fill(tag);
         await dialog.getByLabel('Tags').press('Enter');

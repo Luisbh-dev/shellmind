@@ -355,6 +355,55 @@ describe('AddServerModal', () => {
         });
     });
 
+    describe('group', () => {
+        const fill = async (user: ReturnType<typeof userEvent.setup>, dialog: HTMLElement) => {
+            await user.type(within(dialog).getByLabelText(/Display name/), 'db');
+            await user.type(within(dialog).getByLabelText(/Host \/ IP/), '10.0.0.9');
+            await user.type(within(dialog).getByLabelText(/^User/), 'root');
+        };
+
+        it('picks an existing group from the app dropdown, not a native list', async () => {
+            const { user, dialog, onSaved } = setup();
+            await fill(user, dialog);
+
+            const group = within(dialog).getByRole('combobox', { name: /^Group/ });
+            expect(group).toHaveTextContent('No group');
+            await user.click(group);
+            expect(screen.getAllByRole('option').map((option) => option.textContent)).toEqual(['No group', 'Prod', 'New group…']);
+            await user.click(screen.getByRole('option', { name: 'Prod' }));
+            await user.click(within(dialog).getByRole('button', { name: 'Add connection' }));
+
+            await waitFor(() => expect(onSaved).toHaveBeenCalled());
+            expect(calls[0].body).toMatchObject({ group_name: 'Prod' });
+        });
+
+        it('names a new group when "New group…" is picked', async () => {
+            const { user, dialog, onSaved } = setup();
+            await fill(user, dialog);
+
+            await user.click(within(dialog).getByRole('combobox', { name: /^Group/ }));
+            await user.click(screen.getByRole('option', { name: 'New group…' }));
+            const name = within(dialog).getByLabelText('New group name');
+            expect(name).toHaveFocus();
+            await user.type(name, 'Staging');
+            await user.click(within(dialog).getByRole('button', { name: 'Add connection' }));
+
+            await waitFor(() => expect(onSaved).toHaveBeenCalled());
+            expect(calls[0].body).toMatchObject({ group_name: 'Staging' });
+        });
+
+        it('keeps the group of the server being edited selected', () => {
+            const { dialog } = setup(SAVED[1]);
+            expect(within(dialog).getByRole('combobox', { name: /^Group/ })).toHaveTextContent('Prod');
+        });
+
+        it('is a text field while there are no groups yet', () => {
+            render(<AddServerModal isOpen onClose={() => undefined} onSaved={() => undefined} servers={[]} />);
+            const dialog = screen.getByRole('dialog', { name: 'New connection' });
+            expect(within(dialog).getByRole('textbox', { name: 'Group' })).toBeInTheDocument();
+        });
+    });
+
     it('is translated', () => {
         setLanguage('es');
         const onSaved = vi.fn();

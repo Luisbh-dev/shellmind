@@ -90,6 +90,11 @@ const es: typeof en = {
     jump: {
         none: 'Ninguno (conexión directa)'
     },
+    groupChoice: {
+        none: 'Sin grupo',
+        new: 'Nuevo grupo…',
+        newName: 'Nombre del nuevo grupo'
+    },
     s3: {
         aws: 'AWS S3',
         other: 'Otro (MinIO, R2…)'

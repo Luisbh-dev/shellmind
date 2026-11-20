@@ -88,6 +88,11 @@ export default {
     jump: {
         none: 'None (direct connection)'
     },
+    groupChoice: {
+        none: 'No group',
+        new: 'New group…',
+        newName: 'New group name'
+    },
     s3: {
         aws: 'AWS S3',
         other: 'Other (MinIO, R2…)'
