@@ -59,7 +59,7 @@ describe('chat with a saved API key that no longer decrypts', () => {
         const parser = createSseParser(({ data }) => events.push(JSON.parse(data) as ChatStreamEvent));
         parser.push(await res.text());
         parser.end();
-        expect(events.at(-1)).toEqual({ type: 'done', usedModel: 'MiniMax-M3', fullText: 'Use `df -h`.' });
+        expect(events.at(-1)).toEqual({ type: 'done', usedModel: 'MiniMax-M3.1-Flash', fullText: 'Use `df -h`.' });
         expect(mock.requests).toHaveLength(1);
         expect(mock.requests[0].headers['x-api-key']).toBeUndefined();
     });

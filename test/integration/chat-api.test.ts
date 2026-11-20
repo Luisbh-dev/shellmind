@@ -73,10 +73,10 @@ describe('POST /api/chat (stream)', () => {
         });
 
         expect(events).toEqual([
-            { type: 'model', model: 'MiniMax-M3' },
+            { type: 'model', model: 'MiniMax-M3.1-Flash' },
             { type: 'delta', text: 'Use ' },
             { type: 'delta', text: '`sc query`.' },
-            { type: 'done', usedModel: 'MiniMax-M3', fullText: 'Use `sc query`.' }
+            { type: 'done', usedModel: 'MiniMax-M3.1-Flash', fullText: 'Use `sc query`.' }
         ]);
 
         const [upstream] = mock.requests;
@@ -120,7 +120,7 @@ describe('POST /api/chat (stream)', () => {
     it('signals a max_tokens cut-off in the done event', async () => {
         mock.queue(streamReply(['long'], { stopReason: 'max_tokens' }));
         const events = await streamChat({ message: 'write a backup script for postgres' });
-        expect(events.at(-1)).toEqual({ type: 'done', usedModel: 'MiniMax-M3', fullText: 'long', stopReason: 'max_tokens' });
+        expect(events.at(-1)).toEqual({ type: 'done', usedModel: 'MiniMax-M3.1-Flash', fullText: 'long', stopReason: 'max_tokens' });
     });
 
     it('sends auto-run output as a data block with ShellMind\'s own instruction', async () => {
@@ -168,7 +168,7 @@ describe('POST /api/chat (JSON and errors)', () => {
         mock.queue(jsonReply('df -h'));
         const res = await postChat({ purpose: 'fix-it', issues: ['No space left on device'] });
         expect(res.status).toBe(200);
-        expect(await res.json()).toEqual({ response: 'df -h', usedModel: 'MiniMax-M3' });
+        expect(await res.json()).toEqual({ response: 'df -h', usedModel: 'MiniMax-M3.1-Flash' });
         expect(mock.requests[0].body.stream).toBeUndefined();
     });
 
@@ -226,9 +226,9 @@ describe('POST /api/chat (JSON and errors)', () => {
 
         const events = await streamChat({ message: 'restart docker' });
 
-        expect(events[0]).toEqual({ type: 'model', model: 'MiniMax-M3' });
-        expect(mock.requests[0].body.model).toBe('MiniMax-M3');
-        expect(await (await server.fetch('/api/config/model')).json()).toEqual({ model: 'MiniMax-M3' });
+        expect(events[0]).toEqual({ type: 'model', model: 'MiniMax-M3.1-Flash' });
+        expect(mock.requests[0].body.model).toBe('MiniMax-M3.1-Flash');
+        expect(await (await server.fetch('/api/config/model')).json()).toEqual({ model: 'MiniMax-M3.1-Flash' });
         await sql("DELETE FROM settings WHERE key = 'PREFERRED_MODEL'");
     });
 

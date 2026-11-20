@@ -125,7 +125,7 @@ The **Operations** tab of a Linux or Windows server:
 
 ### AI assistant
 
-- **Models**: MiniMax M3 (default) and MiniMax M3.1 Flash; Gemini 3.8 Flash, Gemini 3.5 Flash-Lite and Gemini 4 Argon with your own Gemini API key. A model that fails with a rate limit or overload before answering falls back to its sibling once.
+- **Models**: MiniMax M3.1 Flash (default, recommended) and MiniMax M3; Gemini 3.8 Flash, Gemini 3.5 Flash-Lite and Gemini 4 Argon with your own Gemini API key. A model that fails with a rate limit or overload before answering falls back to its sibling once.
 - **MiniMax without a key** goes through the ShellMind proxy, as described in the [legal notice](https://shellmind.app/legal.html#ai-data); **with your own MiniMax key** requests go directly to MiniMax's API. The chat explains which route is used, and what is sent, before the first request.
 - **Context**: the assistant knows the active server, its OS and shell, recent terminal output (known secret formats masked) and the conversation, which is kept per server.
 - **Diagnose and triage**: "Ask AI" on a service, container, pod, selected log lines, the status page or a fleet row collects read-only evidence on the server, shows you every part of it before anything is sent, and the answer comes as cause, evidence and fix. Triage collects failed units, recent errors, kernel and OOM messages, disk, memory, busy processes and listening ports in one go.

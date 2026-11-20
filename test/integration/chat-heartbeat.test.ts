@@ -55,9 +55,9 @@ describe('POST /api/chat (stream heartbeat)', () => {
         parser.push(raw);
         parser.end();
         expect(events).toEqual([
-            { type: 'model', model: 'MiniMax-M3' },
+            { type: 'model', model: 'MiniMax-M3.1-Flash' },
             { type: 'delta', text: 'df -h' },
-            { type: 'done', usedModel: 'MiniMax-M3', fullText: 'df -h' }
+            { type: 'done', usedModel: 'MiniMax-M3.1-Flash', fullText: 'df -h' }
         ]);
     });
 });

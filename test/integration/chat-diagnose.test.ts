@@ -386,7 +386,7 @@ describe('POST /api/chat, purpose "diagnose"', () => {
             autoRun: true
         });
 
-        expect(events.at(-1)).toEqual({ type: 'done', usedModel: 'MiniMax-M3', fullText: '### Cause\nPort 80 is taken.' });
+        expect(events.at(-1)).toEqual({ type: 'done', usedModel: 'MiniMax-M3.1-Flash', fullText: '### Cause\nPort 80 is taken.' });
         const [upstream] = mock.requests;
         const system = upstream.body.system ?? '';
         const dataId = /id="([0-9a-f]{12})"/.exec(system)?.[1];

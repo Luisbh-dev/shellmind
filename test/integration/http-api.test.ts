@@ -360,7 +360,7 @@ describe('config API', () => {
     });
 
     it('stores the preferred model', async () => {
-        expect((await request('GET', '/api/config/model')).body).toEqual({ model: 'MiniMax-M3' });
+        expect((await request('GET', '/api/config/model')).body).toEqual({ model: 'MiniMax-M3.1-Flash' });
 
         const missing = await request('POST', '/api/config/model', {});
         expect(missing.status).toBe(400);

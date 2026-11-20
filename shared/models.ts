@@ -23,7 +23,6 @@ export type ModelInfo = {
 // 2026-11-18; Gemini 3 Flash preview and Gemma were superseded by the Gemini
 // 3.x stable line.
 export const MODELS: readonly ModelInfo[] = [
-    { id: "MiniMax-M3", label: "MiniMax M3", provider: "minimax", fallback: "MiniMax-M3.1-Flash", recommended: true },
     // Always thinks: a larger budget (reasoning counts against max_tokens) and
     // a low effort keep it responsive in an interactive console.
     {
@@ -32,14 +31,16 @@ export const MODELS: readonly ModelInfo[] = [
         provider: "minimax",
         fallback: "MiniMax-M3",
         maxTokens: 16384,
-        params: { output_config: { effort: "low" } }
+        params: { output_config: { effort: "low" } },
+        recommended: true
     },
+    { id: "MiniMax-M3", label: "MiniMax M3", provider: "minimax", fallback: "MiniMax-M3.1-Flash" },
     { id: "gemini-3.8-flash", label: "Gemini 3.8 Flash", provider: "gemini", fallback: "gemini-3.5-flash-lite" },
     { id: "gemini-3.5-flash-lite", label: "Gemini 3.5 Flash-Lite", provider: "gemini", fallback: "gemini-3.8-flash" },
     { id: "gemini-4-argon", label: "Gemini 4 Argon", provider: "gemini", fallback: "gemini-3.8-flash" }
 ];
 
-export const DEFAULT_MODEL = "MiniMax-M3";
+export const DEFAULT_MODEL = "MiniMax-M3.1-Flash";
 export const DEFAULT_MAX_TOKENS = 8192;
 
 // Retired or renamed ids that older versions may have saved as the preferred

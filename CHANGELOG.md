@@ -2,6 +2,11 @@
 
 All notable changes to ShellMind are documented in this file. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and ShellMind follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from 1.0.0 on.
 
+## [Unreleased]
+
+### Changed
+- MiniMax M3.1 Flash is now the default and recommended model; MiniMax M3 stays available and remains its fallback. A model already chosen in Settings or the chat is kept.
+
 ## [1.0.0] - 2026-10-26
 
 The first stable release: a rewrite of the backend into modules, a new security model, and the features that make ShellMind a daily workspace for sysadmins and DevOps engineers. Databases of 0.3.x are migrated on first start.
