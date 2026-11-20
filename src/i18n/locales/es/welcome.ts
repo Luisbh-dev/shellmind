@@ -44,15 +44,10 @@ const es: typeof en = {
     },
     whatsNew: {
         title: 'Novedades de la {version}',
-        fleet: { title: 'Salud de la flota', text: 'La salud de todos los servidores en una pantalla, con avisos' },
-        panes: { title: 'Paneles y escritura simultánea', text: 'Terminales lado a lado, una línea escrita en varias' },
-        containers: { title: 'Contenedores y Kubernetes', text: 'Compose, imágenes, pods y cargas, con shell dentro' },
-        patch: { title: 'Parches y disco', text: 'Actualizaciones por lotes seguros, limpiezas con vista previa' },
-        rdp: { title: 'Escritorio remoto integrado', text: 'Escritorios Windows en una pestaña, con certificados fijados' },
-        diagnose: { title: 'Diagnóstico con IA', text: 'Pruebas reunidas en el servidor, luego la causa y la solución' },
-        jobs: { title: 'Trabajos de ejecución múltiple', text: 'Despliegues con canario y salida agrupada por resultado' },
-        security: { title: 'Llavero y auditoría', text: 'Identidades, agente SSH, credenciales cifradas y registro' },
-        appearance: { title: 'Temas e idiomas', text: 'Claro y oscuro, colores de acento, español e inglés' }
+        gpu: { title: 'Uso de GPU en Estado', text: 'Uso, temperatura, consumo y procesos de GPU en servidores NVIDIA' },
+        spark: { title: 'Compatibilidad con DGX Spark', text: 'Memoria unificada bien entendida: sin VRAM inventada, solo lo que informa el equipo' },
+        model: { title: 'MiniMax M3.1 Flash por defecto', text: 'El modelo recomendado, listo en cada chat nuevo' },
+        pickers: { title: 'Selectores de grupos y etiquetas', text: 'Los grupos y etiquetas existentes en los desplegables de la app' }
     }
 };
 

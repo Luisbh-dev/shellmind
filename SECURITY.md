@@ -6,8 +6,9 @@ ShellMind holds the keys to your servers: SSH passwords and private keys, RDP pa
 
 | Version | Supported |
 |---|---|
-| 1.0.x | Yes: security fixes are released as 1.0.x updates. |
-| 0.3.x and earlier | No. These versions have a weaker security model (no session token, credentials in plaintext); upgrade to 1.0. |
+| 1.1.x | Yes: security fixes are released as 1.1.x updates. |
+| 1.0.x | No. 1.1 is a drop-in update that keeps your data; upgrade to it. |
+| 0.3.x and earlier | No. These versions have a weaker security model (no session token, credentials in plaintext); upgrade to 1.1. |
 
 ## Reporting a vulnerability
 

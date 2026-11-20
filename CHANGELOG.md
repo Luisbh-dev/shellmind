@@ -2,10 +2,22 @@
 
 All notable changes to ShellMind are documented in this file. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and ShellMind follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from 1.0.0 on.
 
-## [Unreleased]
+## [1.1.0] - 2026-11-21
+
+GPU monitoring in the Status page, with support for the NVIDIA DGX Spark, a new default AI model and two pickers of the connection form that now look like the rest of the app. Nothing to migrate: update and keep working.
+
+### Added
+- **GPU usage in Status** for Linux servers with an NVIDIA driver (read with `nvidia-smi`): a GPU tile with the utilization, temperature and power draw, a history chart, and a GPU card per device with the processes using it and what they hold. Hosts without a GPU look exactly as before.
+- **DGX Spark (GB10) support.** The GB10 shares the system memory and reports none of its own, so `nvidia-smi` answers N/A for it: ShellMind says "Unified memory" instead of showing a made-up capacity or a 0%, points to the system Memory tile (which already counts what the GPU uses) and lists the per-process memory, which the Spark does report.
+- The GPUs are part of what the AI sees when you ask about a server's status.
 
 ### Changed
 - MiniMax M3.1 Flash is now the default and recommended model; MiniMax M3 stays available and remains its fallback. A model already chosen in Settings or the chat is kept.
+- The Status page rearranges its tiles and charts when a GPU is present, so no row is left half empty at any width.
+
+### Fixed
+- **Group** in the New / Edit connection dialog was the browser's own list, out of place in the app: with groups already saved it is now the app's dropdown, with a "New group…" entry that opens a field to name it.
+- **Tag suggestions** while typing a tag were the browser's native list too: they are now a themed list that filters as you type and picks with the mouse, the arrow keys and Enter, and closes with Escape.
 
 ## [1.0.0] - 2026-10-26
 
@@ -221,6 +233,7 @@ The first stable release: a rewrite of the backend into modules, a new security 
 ### Added
 - First alpha: a web and Electron app with SQLite storage, SSH and PowerShell terminals, SFTP file management, a Windows status view and an AI assistant (Gemini) with Auto-Run.
 
+[1.1.0]: https://github.com/Luisbh-dev/shellmind/releases/tag/v1.1.0
 [1.0.0]: https://github.com/Luisbh-dev/shellmind/releases/tag/v1.0.0
 [0.3.3]: https://github.com/Luisbh-dev/shellmind/commit/ef60ea8567c6c37a62d3480740fe65ebe96325b6
 [0.3.2]: https://github.com/Luisbh-dev/shellmind/commit/6764af5c8bf6c5d9d8e05757d12acc0cf3ef67fd

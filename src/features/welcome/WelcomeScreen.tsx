@@ -1,7 +1,6 @@
 import { useMemo } from 'react';
 import {
-    ArrowRight, Columns2, Container, FileCode, HeartPulse, KeyRound, ListChecks, Monitor, PackageCheck, Palette, Plus, Search,
-    Stethoscope, TerminalSquare, type LucideIcon
+    ArrowRight, CircuitBoard, Cpu, FileCode, ListFilter, Plus, Search, Sparkles, TerminalSquare, type LucideIcon
 } from 'lucide-react';
 import type { ServerSummary } from '@shared/types';
 import { cn } from '@/lib/cn';
@@ -44,18 +43,13 @@ type QuickAction = {
 // The release the "What's new" list below describes, which its heading
 // names. A build may carry the list before its version is bumped; a test
 // fails once the build's release moves past it while the list stays.
-export const WHATS_NEW_RELEASE = '1.0';
+export const WHATS_NEW_RELEASE = '1.1';
 
 const WHATS_NEW: Array<{ id: string; icon: LucideIcon }> = [
-    { id: 'fleet', icon: HeartPulse },
-    { id: 'panes', icon: Columns2 },
-    { id: 'containers', icon: Container },
-    { id: 'patch', icon: PackageCheck },
-    { id: 'rdp', icon: Monitor },
-    { id: 'diagnose', icon: Stethoscope },
-    { id: 'jobs', icon: ListChecks },
-    { id: 'security', icon: KeyRound },
-    { id: 'appearance', icon: Palette }
+    { id: 'gpu', icon: CircuitBoard },
+    { id: 'spark', icon: Cpu },
+    { id: 'model', icon: Sparkles },
+    { id: 'pickers', icon: ListFilter }
 ];
 
 // Recently opened servers first (newest first), otherwise the saved order.

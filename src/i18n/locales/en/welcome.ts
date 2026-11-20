@@ -42,14 +42,9 @@ export default {
     },
     whatsNew: {
         title: 'New in {version}',
-        fleet: { title: 'Fleet health', text: 'Every server\'s health on one screen, with alerts' },
-        panes: { title: 'Split panes & broadcast', text: 'Terminals side by side, one line typed into many' },
-        containers: { title: 'Containers & Kubernetes', text: 'Compose, images, pods and workloads, with shells inside' },
-        patch: { title: 'Patch center & disk toolkit', text: 'Updates in safe batches, disk cleanups with a preview' },
-        rdp: { title: 'Built-in Remote Desktop', text: 'Windows desktops in a tab, certificates pinned' },
-        diagnose: { title: 'AI diagnose', text: 'Evidence from the server, then the cause and the fix' },
-        jobs: { title: 'Multi-exec jobs', text: 'Canary rollouts, output grouped by result' },
-        security: { title: 'Keychain & audit', text: 'Shared identities, SSH agent, encrypted credentials, audit log' },
-        appearance: { title: 'Themes & languages', text: 'Light and dark, accent colors, English and Spanish' }
+        gpu: { title: 'GPU usage in Status', text: 'Utilization, temperature, power and GPU processes of NVIDIA servers' },
+        spark: { title: 'DGX Spark support', text: 'Unified memory understood: no made-up VRAM, just what the machine reports' },
+        model: { title: 'MiniMax M3.1 Flash by default', text: 'The recommended model, ready in every new chat' },
+        pickers: { title: 'Groups and tags pickers', text: 'Existing groups and tags in the app\'s own dropdowns' }
     }
 };

@@ -2,11 +2,11 @@
 
 **The self-hosted workspace for sysadmins and DevOps engineers: SSH terminals, files, operations, fleet health and an AI assistant that works from real evidence, in one desktop app.**
 
-ShellMind 1.0 runs on Windows, macOS and Linux as a desktop app, or on your own server as a web app. It connects to Linux and Windows servers over SSH, to FTP/FTPS and S3-compatible storage, to Windows desktops over RDP, and to the shells and cloud CLIs of your own machine. Credentials stay on the machine that runs ShellMind, encrypted at rest.
+ShellMind 1.1 runs on Windows, macOS and Linux as a desktop app, or on your own server as a web app. It connects to Linux and Windows servers over SSH, to FTP/FTPS and S3-compatible storage, to Windows desktops over RDP, and to the shells and cloud CLIs of your own machine. Credentials stay on the machine that runs ShellMind, encrypted at rest.
 
 ![The AI assistant diagnosing a failed systemd service from the evidence ShellMind collected on the server](docs/screenshots/chat-diagnose.png)
 
-- [What's new in 1.0](#whats-new-in-10)
+- [What's new in 1.1](#whats-new-in-11)
 - [Screenshots](#screenshots)
 - [Features](#features)
 - [Download](#download)
@@ -20,21 +20,16 @@ ShellMind 1.0 runs on Windows, macOS and Linux as a desktop app, or on your own 
 - [Project structure](#project-structure)
 - [Changelog and license](#changelog-and-license)
 
-## What's new in 1.0
+## What's new in 1.1
 
-1.0 is a rewrite of almost everything since 0.3.3. The full list is in [CHANGELOG.md](CHANGELOG.md); the highlights:
+1.1 brings GPU monitoring to the Status page, with support for the NVIDIA DGX Spark. The full list is in [CHANGELOG.md](CHANGELOG.md); the highlights:
 
-- **Fleet health**: every SSH server on one board, with reachability and health checks in the background, alerts and desktop notifications.
-- **Split panes and broadcast input**: up to four terminals side by side, and one line typed into several of them, with guards for password prompts and destructive commands.
-- **Operations**: systemd and Windows services, Docker and Podman containers (with shells inside them), Compose projects, images, live logs, and a Kubernetes workspace for pods, workloads, events and nodes.
-- **Patch center and disk toolkit**: pending and security updates across the fleet, patched in canary batches with an optional reboot; disk usage explorer, deleted-but-open files and cleanups with a preview.
-- **Built-in Remote Desktop**: Windows desktops in a tab (IronRDP), through a gateway in the backend that pins each server's certificate.
-- **AI diagnose**: "Ask AI" on a service, container, pod, log excerpt or status page attaches evidence collected on the server; one-click triage of a whole server.
-- **Multi-exec jobs**: snippets with variables run on many servers as background jobs, with rolling batches, a canary, a failure limit, and output grouped by result.
-- **Keychain**: shared identities, SSH agent support, ed25519 key generation, key install and rotation across servers.
-- **Security**: a session token on every request, encrypted credentials, host keys pinned on first use (also behind jump hosts), an audit log of every command the app runs.
-- **Themes and languages**: dark and light themes, accent colors, terminal color schemes, English and Spanish.
+- **GPU usage in Status**: for Linux servers with an NVIDIA driver, a GPU tile (utilization, temperature, power), a history chart, and a card per GPU with the processes using it.
+- **DGX Spark support**: the GB10 shares the system memory and `nvidia-smi` has no memory of its own to report for it. ShellMind shows "Unified memory" rather than a made-up capacity, and lists what each GPU process holds.
+- **MiniMax M3.1 Flash by default**: the recommended model, preselected in every new chat (M3 stays available as its fallback).
+- **Native pickers replaced**: the group and tag suggestions of the connection form are now the app's own dropdown and list.
 
+Coming from 0.3.x? 1.0 was a rewrite of almost everything since 0.3.3: fleet health, split panes and broadcast input, operations (services, containers, Compose, Kubernetes), the patch center and disk toolkit, built-in Remote Desktop, AI diagnose, multi-exec jobs, the keychain and the audit log. The Features section below covers all of it.
 ## Screenshots
 
 | | |
@@ -77,7 +72,7 @@ ShellMind 1.0 runs on Windows, macOS and Linux as a desktop app, or on your own 
 
 ### Status and fleet health
 
-- **Status dashboard** for Linux and Windows: CPU, memory and swap, the fullest filesystem, load per core, history charts, network traffic, top processes, filesystems and interfaces, failed units, uptime. It works on minimal systems such as Alpine (busybox) and reads Windows through PowerShell over SSH, also with an account that is not an administrator (with fewer details, such as no processor load, and the dashboard says why).
+- **Status dashboard** for Linux and Windows: CPU, memory and swap, the fullest filesystem, load per core, history charts, network traffic, top processes, filesystems and interfaces, failed units, uptime. On Linux servers with an NVIDIA driver it adds the GPUs: utilization, temperature, power and the processes using them, also on the DGX Spark, whose unified memory it reports as such instead of as a capacity of its own. It works on minimal systems such as Alpine (busybox) and reads Windows through PowerShell over SSH, also with an account that is not an administrator (with fewer details, such as no processor load, and the dashboard says why).
 - **Fleet health board** (Ctrl+Shift+H): one row per SSH server with state, CPU/load, memory, fullest disk, failed units, pending reboot, pending updates (with security count), uptime and last check; filters, search, grouping by group or tag.
 - **Background checks**: reachability checks are on by default and never log in; health checks (which do log in) are opt-in, every 1 to 60 minutes, with jitter, backoff for unreachable servers, and holds that stop retrying rejected credentials or changed host keys. A server behind a jump host waits for its jump host's check.
 - **Alerts**: in-app toasts and desktop notifications when a server turns critical or unreachable, throttled per server; the welcome screen shows the servers that need attention, and the sidebar a health dot.
@@ -174,10 +169,10 @@ Installers are attached to each [GitHub release](https://github.com/Luisbh-dev/s
 
 | Platform | Package |
 |---|---|
-| Windows 10/11 (x64) | `ShellMind-Setup-1.0.0-x64.exe` (installer) |
-| Linux (x64) | `ShellMind-1.0.0-x86_64.AppImage` and `shellmind_1.0.0_amd64.deb`, for glibc 2.31 or later (Debian 11, Ubuntu 20.04, Fedora, RHEL/Rocky 9 and newer) |
-| macOS, Apple silicon | `ShellMind-1.0.0-arm64.dmg` (or `.zip`) |
-| macOS, Intel | `ShellMind-1.0.0-x64.dmg` (or `.zip`) |
+| Windows 10/11 (x64) | `ShellMind-Setup-1.1.0-x64.exe` (installer) |
+| Linux (x64) | `ShellMind-1.1.0-x86_64.AppImage` and `shellmind_1.1.0_amd64.deb`, for glibc 2.31 or later (Debian 11, Ubuntu 20.04, Fedora, RHEL/Rocky 9 and newer) |
+| macOS, Apple silicon | `ShellMind-1.1.0-arm64.dmg` (or `.zip`) |
+| macOS, Intel | `ShellMind-1.1.0-x64.dmg` (or `.zip`) |
 
 `SHA256SUMS.txt` on the release lists the checksum of every package (`sha256sum -c SHA256SUMS.txt --ignore-missing` in the download folder), and `gh attestation verify <package> --repo Luisbh-dev/shellmind` checks that the release workflow built it.
 

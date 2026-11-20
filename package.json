@@ -1,6 +1,6 @@
 {
   "name": "shellmind",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "The self-hosted workspace for sysadmins and DevOps: SSH terminals, files, operations, fleet health, Remote Desktop and an AI assistant.",
   "author": "Luisbh",
   "license": "MIT",
